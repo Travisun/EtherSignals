@@ -1,3 +1,5 @@
+<p align="right"><b>English</b> · <a href="README.zh-CN.md">简体中文</a></p>
+
 <p align="center">
   <img src="assets/logo.png" width="160" alt="EtherSignals — real-time crypto trend signals" />
 </p>
@@ -5,13 +7,25 @@
 <h1 align="center">EtherSignals</h1>
 
 <p align="center">
-  <b>Free real-time crypto trend signals for ETHUSDT — multi-timeframe regime detection, adaptive indicator weighting and objective support&nbsp;/&nbsp;resistance levels, delivered instantly to Telegram.</b>
+  <b>Free real-time crypto trend signals for ETHUSDT — multi-timeframe regime detection, adaptive indicator weighting and objective support&nbsp;/&nbsp;resistance levels.</b>
 </p>
 
 <p align="center">
-  <a href="https://ethersignals.com"><img alt="Website" src="https://img.shields.io/badge/🌐_Live_on-ethersignals.com-2ea44f?style=for-the-badge" height="40"></a>&nbsp;
-  <a href="https://t.me/ethersignals"><img alt="Telegram Channel" src="https://img.shields.io/badge/📲_Free_Signals-Telegram_Channel-26A5E4?style=for-the-badge" height="40"></a>&nbsp;
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" height="40"></a>&nbsp;
+  <b>📲 Never miss a regime shift — get every alert the moment it happens.</b>
+</p>
+
+<p align="center">
+  <a href="https://t.me/ethersignals"><img alt="Get free real-time signals on Telegram" src="https://img.shields.io/badge/Subscribe_Free_–_Real_Time_Signals-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" height="56"></a>
+  &nbsp;&nbsp;
+  <a href="https://ethersignals.com"><img alt="ethersignals.com — dashboards, history and webhook delivery" src="https://img.shields.io/badge/ethersignals.com-Dashboards_%26_History-364A63?style=for-the-badge&logo=googlechrome&logoColor=white" height="56"></a>
+</p>
+
+<p align="center">
+  <sub>Trend shifts · level breaks · pattern events — pushed to your Telegram the second they confirm. <b>No account, no cost.</b></sub>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge"></a>&nbsp;
   <a href="https://linux.do?ref=seal-click" target="_blank" rel="noopener noreferrer" title="Best Community · LINUX DO">
     <img src="https://linuxdo-seal.cuishushu.com/seals/seal-best-community.svg" alt="Best Community · LINUX DO" height="28" />
   </a>
@@ -19,82 +33,76 @@
 
 ---
 
-## ✨ What is EtherSignals?
-
-**EtherSignals** watches the ETHUSDT perpetual market around the clock and turns raw exchange data into a decision-ready trend report — the moment something meaningful changes.
-
-Every message is a **self-contained snapshot**: you never need to scroll back through history. One glance tells you where price is, how each timeframe is leaning, how confident the model is, and where the key support and resistance levels sit.
-
-> 🎯 **Get it free, in real time, on Telegram** → [t.me/ethersignals](https://t.me/ethersignals)
-> The full experience — dashboards, history and webhook delivery — lives at [ethersignals.com](https://ethersignals.com).
-
-> 🆕 **EtherSignals is now fully open source (MIT).** 本仓库包含完整源码：信号引擎（`backend/`）
-> 与信号展示站（`frontend/`），可自托管、可二次开发。快捷启动见下一节，生产部署见 [docs/](docs/)。
+> 🆕 **EtherSignals is now fully open source (MIT).** This repository contains the complete source:
+> the signal engine ([`backend/`](backend/)) and the web dashboard ([`frontend/`](frontend/)) —
+> self-host it, extend it, or deploy your own channel. Jump to the [Quick Start](#-quick-start--5-steps-to-a-running-pipeline),
+> or the [deployment guides](docs/).
 
 ---
 
-## 🚀 Quick Start · 快捷启动
+## 🚀 Quick Start · 5 steps to a running pipeline
 
-五步在本地跑通完整链路（信号引擎 → Webhook → 信号站）。前置要求：**Node ≥ 22**、npm、Docker（仅用于起一个开发数据库）。
+Run the full path locally — signal engine → webhook → dashboard. Prerequisites: **Node ≥ 22**, npm, Docker (only for the dev database).
 
 ```bash
 git clone https://github.com/Travisun/EtherSignals.git
 cd EtherSignals
 
-# ① 信号站数据库（只需执行一次）
+# ① Dashboard database (once)
 docker run -d --name ethersignals-pg-dev \
   -e POSTGRES_USER=ether -e POSTGRES_PASSWORD=ether -e POSTGRES_DB=ethersignals \
   -p 127.0.0.1:54329:5432 postgres:18-alpine
 
-# ② 前端信号站（终端 1）
+# ② Frontend dashboard (terminal 1)
 cd frontend && cp .env.example .env
-#   编辑 .env 两行：
+#   edit two lines in .env:
 #     DATABASE_URL="postgresql://ether:ether@127.0.0.1:54329/ethersignals"
 #     WEBHOOK_SECRETS="dev-webhook-secret-change-me"
 npm install && npm run db:deploy
 npm run dev -- -p 3001                        # → http://localhost:3001
 
-# ③ 信号引擎（终端 2）
+# ③ Signal engine (terminal 2)
 cd ../backend && npm install
 npm run dev                                   # → http://localhost:3000
 ```
 
 ```text
-# ④ 打通 Webhook：浏览器打开 http://localhost:3000
-#    设置 → 通知 → Webhook：
+# ④ Wire the webhook: open http://localhost:3000
+#    Settings → Notifications → Webhook:
 #      URL   = http://127.0.0.1:3001/api/webhooks/signals
 #      Token = dev-webhook-secret-change-me
-#    启用 → 点「测试」→ 返回 {"accepted":1}
-# ⑤ 完成：前端首页 20 秒内出现信号快照 ✅（等下一次趋势变化即有真实推送）
+#    Enable → click "Test" → {"accepted":1}
+# ⑤ Done: the dashboard shows the snapshot within 20s ✅
+#    (real pushes arrive on the next trend change)
 ```
 
-> 想立刻看到页面效果（不等真实信号）？在前端先执行 `npm run db:seed` 灌入 24 条演示数据。
-> 以上为本地回环的最小配置；生产环境（HTTPS 反代、Web Push、Bitget 实盘密钥、2FA/PIN 加固）
-> 请按 [docs/](docs/) 三份指引操作。
+> Want data on the page immediately? Run `npm run db:seed` in `frontend/` for 24 demo signals.
+> The above is the minimal loopback setup; for production (TLS reverse proxy, Web Push, live
+> Bitget keys, 2FA/PIN hardening) follow the guides in [docs/](docs/).
 
 ---
 
-## 📦 Repository structure · 仓库结构
+## 📦 Repository structure
 
-| 目录 | 内容 | 技术栈 |
+| Path | What it is | Stack |
 |---|---|---|
-| [`backend/`](backend/) | **信号/交易引擎**：五周期趋势信号（自适应指标权重）、策略 Hooks、回测、纸上交易、网格机器人、LLM 助手、MCP（19 工具）、PostgreSQL 审计 | Next.js 14 自定义服务器 · Socket.IO · Bitget WS/REST |
-| [`frontend/`](frontend/) | **信号展示站**：webhook 摄入（幂等去重）、信号流页面、Web Push 桌面通知、PWA | Next.js 16 · Prisma 6 · PostgreSQL 18 |
-| [`docs/`](docs/) | **部署指引**（中文）：后端 / 前端 / Webhook 联通 | — |
+| [`backend/`](backend/) | **Signal / trading engine**: five-timeframe trend signals (adaptive indicator weighting), strategy hooks, backtesting, paper trading, grid bot, LLM assistant, MCP (19 tools), PostgreSQL audit | Next.js 14 custom server · Socket.IO · Bitget WS/REST |
+| [`frontend/`](frontend/) | **Public dashboard**: webhook ingest (idempotent), signal feed, Web Push notifications, PWA | Next.js 16 · Prisma 6 · PostgreSQL 18 |
+| [`docs/`](docs/) | **Deployment guides** (中文): backend / frontend / webhook integration | — |
 
-数据流：`backend` 检测到趋势变化 → Webhook（Bearer token）推送全量快照 → `frontend` 校验入库 →
-页面 20s 刷新 + Web Push 扇出。
+Data flow: `backend` detects a trend change → webhook push (Bearer token) with a full snapshot →
+`frontend` verifies & stores it → page refreshes within 20s + Web Push fan-out.
 
-## 🛠 Deployment guides · 部署指引
+## 🛠 Deployment guides
 
-| 文档 | 内容 |
+| Doc | Contents |
 |---|---|
-| [docs/DEPLOY-BACKEND.md](docs/DEPLOY-BACKEND.md) | 后端部署：npm / Docker Compose / 生产三路径，代理与受限网络，环境变量表，首次初始化（账号、2FA、PIN、Bitget 密钥、纸上交易），运维与加固 |
-| [docs/DEPLOY-FRONTEND.md](docs/DEPLOY-FRONTEND.md) | 前端部署：本地开发四步，生产 compose（构建期迁移、`NEXT_PUBLIC_*` 重建语义、反代示例），环境变量表，Web Push |
-| [docs/DEPLOY-WEBHOOK.md](docs/DEPLOY-WEBHOOK.md) | Webhook 联通：两侧配置、token 轮换、幂等契约、自建第三方消费者最小示例、故障排查表 |
+| [docs/DEPLOY-BACKEND.md](docs/DEPLOY-BACKEND.md) | Backend: npm / Docker Compose / production paths, restricted-network proxy setup, env reference, first-run setup (account, 2FA, PIN, Bitget keys, paper mode), operations & hardening (中文) |
+| [docs/DEPLOY-FRONTEND.md](docs/DEPLOY-FRONTEND.md) | Frontend: local dev in four steps, production compose (build-time migrations, `NEXT_PUBLIC_*` rebuild semantics, reverse proxy example), env reference, Web Push (中文) |
+| [docs/DEPLOY-WEBHOOK.md](docs/DEPLOY-WEBHOOK.md) | Webhook integration: both sides' configuration, token rotation, idempotency contract, minimal third-party receiver, troubleshooting (中文) |
 
-字段级 webhook 契约：[backend/docs/webhook.md](backend/docs/webhook.md)（生产者视角）·
-[frontend/docs/WEBHOOK.md](frontend/docs/WEBHOOK.md)（消费者视角）。
+Field-level webhook contract: [backend/docs/webhook.md](backend/docs/webhook.md) (producer view) ·
+[frontend/docs/WEBHOOK.md](frontend/docs/WEBHOOK.md) (consumer view).
 
 ---
 
