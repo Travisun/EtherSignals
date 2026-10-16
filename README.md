@@ -13,7 +13,7 @@
   <a href="https://t.me/ethersignals"><img alt="Telegram Channel" src="https://img.shields.io/badge/📲_Free_Signals-Telegram_Channel-26A5E4?style=for-the-badge" height="40"></a>&nbsp;
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" height="40"></a>&nbsp;
   <a href="https://linux.do?ref=seal-click" target="_blank" rel="noopener noreferrer" title="Best Community · LINUX DO">
-    <img src="https://linuxdo-seal.cuishushu.com/seals/seal-best-community.svg" alt="Best Community · LINUX DO" height="40" />
+    <img src="https://linuxdo-seal.cuishushu.com/seals/seal-best-community.svg" alt="Best Community · LINUX DO" height="28" />
   </a>
 </p>
 
