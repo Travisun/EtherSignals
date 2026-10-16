@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://ethersignals.com/logo.png" width="140" alt="EtherSignals — real-time crypto trend signals" />
+  <img src="assets/logo.png" width="160" alt="EtherSignals — real-time crypto trend signals" />
 </p>
 
 <h1 align="center">EtherSignals</h1>
