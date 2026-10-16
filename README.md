@@ -28,6 +28,74 @@ Every message is a **self-contained snapshot**: you never need to scroll back th
 > 🎯 **Get it free, in real time, on Telegram** → [t.me/ethersignals](https://t.me/ethersignals)
 > The full experience — dashboards, history and webhook delivery — lives at [ethersignals.com](https://ethersignals.com).
 
+> 🆕 **EtherSignals is now fully open source (MIT).** 本仓库包含完整源码：信号引擎（`backend/`）
+> 与信号展示站（`frontend/`），可自托管、可二次开发。快捷启动见下一节，生产部署见 [docs/](docs/)。
+
+---
+
+## 🚀 Quick Start · 快捷启动
+
+五步在本地跑通完整链路（信号引擎 → Webhook → 信号站）。前置要求：**Node ≥ 22**、npm、Docker（仅用于起一个开发数据库）。
+
+```bash
+git clone https://github.com/Travisun/EtherSignals.git
+cd EtherSignals
+
+# ① 信号站数据库（只需执行一次）
+docker run -d --name ethersignals-pg-dev \
+  -e POSTGRES_USER=ether -e POSTGRES_PASSWORD=ether -e POSTGRES_DB=ethersignals \
+  -p 127.0.0.1:54329:5432 postgres:18-alpine
+
+# ② 前端信号站（终端 1）
+cd frontend && cp .env.example .env
+#   编辑 .env 两行：
+#     DATABASE_URL="postgresql://ether:ether@127.0.0.1:54329/ethersignals"
+#     WEBHOOK_SECRETS="dev-webhook-secret-change-me"
+npm install && npm run db:deploy
+npm run dev -- -p 3001                        # → http://localhost:3001
+
+# ③ 信号引擎（终端 2）
+cd ../backend && npm install
+npm run dev                                   # → http://localhost:3000
+```
+
+```text
+# ④ 打通 Webhook：浏览器打开 http://localhost:3000
+#    设置 → 通知 → Webhook：
+#      URL   = http://127.0.0.1:3001/api/webhooks/signals
+#      Token = dev-webhook-secret-change-me
+#    启用 → 点「测试」→ 返回 {"accepted":1}
+# ⑤ 完成：前端首页 20 秒内出现信号快照 ✅（等下一次趋势变化即有真实推送）
+```
+
+> 想立刻看到页面效果（不等真实信号）？在前端先执行 `npm run db:seed` 灌入 24 条演示数据。
+> 以上为本地回环的最小配置；生产环境（HTTPS 反代、Web Push、Bitget 实盘密钥、2FA/PIN 加固）
+> 请按 [docs/](docs/) 三份指引操作。
+
+---
+
+## 📦 Repository structure · 仓库结构
+
+| 目录 | 内容 | 技术栈 |
+|---|---|---|
+| [`backend/`](backend/) | **信号/交易引擎**：五周期趋势信号（自适应指标权重）、策略 Hooks、回测、纸上交易、网格机器人、LLM 助手、MCP（19 工具）、PostgreSQL 审计 | Next.js 14 自定义服务器 · Socket.IO · Bitget WS/REST |
+| [`frontend/`](frontend/) | **信号展示站**：webhook 摄入（幂等去重）、信号流页面、Web Push 桌面通知、PWA | Next.js 16 · Prisma 6 · PostgreSQL 18 |
+| [`docs/`](docs/) | **部署指引**（中文）：后端 / 前端 / Webhook 联通 | — |
+
+数据流：`backend` 检测到趋势变化 → Webhook（Bearer token）推送全量快照 → `frontend` 校验入库 →
+页面 20s 刷新 + Web Push 扇出。
+
+## 🛠 Deployment guides · 部署指引
+
+| 文档 | 内容 |
+|---|---|
+| [docs/DEPLOY-BACKEND.md](docs/DEPLOY-BACKEND.md) | 后端部署：npm / Docker Compose / 生产三路径，代理与受限网络，环境变量表，首次初始化（账号、2FA、PIN、Bitget 密钥、纸上交易），运维与加固 |
+| [docs/DEPLOY-FRONTEND.md](docs/DEPLOY-FRONTEND.md) | 前端部署：本地开发四步，生产 compose（构建期迁移、`NEXT_PUBLIC_*` 重建语义、反代示例），环境变量表，Web Push |
+| [docs/DEPLOY-WEBHOOK.md](docs/DEPLOY-WEBHOOK.md) | Webhook 联通：两侧配置、token 轮换、幂等契约、自建第三方消费者最小示例、故障排查表 |
+
+字段级 webhook 契约：[backend/docs/webhook.md](backend/docs/webhook.md)（生产者视角）·
+[frontend/docs/WEBHOOK.md](frontend/docs/WEBHOOK.md)（消费者视角）。
+
 ---
 
 ## 📡 What a signal looks like
@@ -117,7 +185,7 @@ Within seconds of a confirmed change. Minor drift is consolidated; significant r
 No. EtherSignals publishes trend states, continuation statistics and objective levels — the decision is yours. It is a lens on the market, not an autopilot.
 
 **Which indicators power the engine?**
-Nine families spanning trend structure (EMA stack), momentum (MACD, RSI, KDJ), trend strength (ADX/DMI, SuperTrend), volatility channels (Bollinger) and volume flow, plus regression drift. Their exact blend is adaptive and proprietary — the engine continuously learns which indicators deserve influence in the current market character.
+Nine families spanning trend structure (EMA stack), momentum (MACD, RSI, KDJ), trend strength (ADX/DMI, SuperTrend), volatility channels (Bollinger) and volume flow, plus regression drift. Their exact blend is adaptive — the engine continuously learns which indicators deserve influence in the current market character, and the full implementation is in [`backend/src/server/engine/`](backend/src/server/engine/).
 
 **Is this financial advice?**
 No. EtherSignals is an analytical tool. Crypto markets are risky; always do your own research.
@@ -126,7 +194,7 @@ No. EtherSignals is an analytical tool. Crypto markets are risky; always do your
 
 - 🌐 **Online service**: [ethersignals.com](https://ethersignals.com)
 - 📲 **Free Telegram channel**: [t.me/ethersignals](https://t.me/ethersignals)
-- 🛠️ Engine: this repository documents the public face of EtherSignals. The server itself is closed-source.
+- 🛠️ **Full source, MIT**: signal engine in [`backend/`](backend/), web dashboard in [`frontend/`](frontend/) — self-host with the guides in [`docs/`](docs/).
 
 ---
 
