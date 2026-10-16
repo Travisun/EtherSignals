@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  /* up/down semantic colors — driven by the user's red-up/green-up preference
+     (written to :root by stores/prefs.ts), consumed by every tailwind up/down
+     utility so ONE switch re-themes the whole workbench */
+  --up-rgb: 22 163 74;
+  --down-rgb: 220 38 38;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-canvas text-gray-900 antialiased;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Tabular numbers everywhere numbers matter */
+.font-mono,
+table,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Thin professional scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Hide number input spinners for dense trading forms */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

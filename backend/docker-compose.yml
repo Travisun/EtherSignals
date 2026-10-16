@@ -1,0 +1,60 @@
+# GTrading full stack: app + PostgreSQL (audit trail) + Redis (leader election / HA)
+#
+#   docker compose up -d --build
+#   open http://localhost:3000
+#
+# The app degrades gracefully: without DATABASE_URL it logs to JSON only;
+# without REDIS_URL it runs single-instance.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gtrading
+      POSTGRES_PASSWORD: gtrading
+      POSTGRES_DB: gtrading
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U gtrading -d gtrading']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redisdata:/data
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PORT: '3000'
+      DATABASE_URL: postgres://gtrading:gtrading@postgres:5432/gtrading
+      REDIS_URL: redis://redis:6379
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./data:/app/data
+
+volumes:
+  pgdata:
+  redisdata:
