@@ -1,0 +1,34 @@
+# Production stack: single app container on the host network, bound to
+# loopback for a reverse proxy (BaoTa/nginx/caddy with TLS in front).
+# PostgreSQL is external (e.g. the BaoTa-managed instance on 127.0.0.1:5432) —
+# set DATABASE_URL accordingly. Migrations apply automatically on boot.
+services:
+  app:
+    build:
+      context: .
+      network: host           # build-time migrations reach the loopback DB
+      args:
+        DATABASE_URL: ${DATABASE_URL:-}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
+        NEXT_PUBLIC_TELEGRAM_URL: ${NEXT_PUBLIC_TELEGRAM_URL:-https://t.me/EtherSignals}
+        NEXT_PUBLIC_GITHUB_REPO: ${NEXT_PUBLIC_GITHUB_REPO:-Travisun/EtherSignals}
+    restart: unless-stopped
+    network_mode: host          # binds PORT on HOSTNAME (loopback) only
+    environment:
+      PORT: ${PORT:-3021}
+      HOSTNAME: 127.0.0.1
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?required}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
+      NEXT_PUBLIC_TELEGRAM_URL: ${NEXT_PUBLIC_TELEGRAM_URL:-https://t.me/EtherSignals}
+      NEXT_PUBLIC_GITHUB_REPO: ${NEXT_PUBLIC_GITHUB_REPO:-Travisun/EtherSignals}
+      WEBHOOK_SECRETS: ${WEBHOOK_SECRETS:?required}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
+      TRUST_PROXY: "true"
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"

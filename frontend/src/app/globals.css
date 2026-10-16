@@ -1,0 +1,383 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * EtherSignals design tokens.
+ *
+ * Palette derived from the brand mark (blue disc #62a6ff→#3b86f6, ice-white
+ * diamond #fafdff→#add3fb): a deep navy terminal surface for dark mode and an
+ * ice-white surface for light mode, with the brand blue as the single accent.
+ * Long/short colors follow exchange convention (green up / red down).
+ */
+
+:root {
+  --background: #f2f6fc;
+  --foreground: #0c1526;
+  --card: #ffffff;
+  --card-foreground: #0c1526;
+  --muted: #e9eff8;
+  --muted-foreground: #5b6c8a;
+  --border: #d9e3f2;
+  --input: #d9e3f2;
+  --ring: #2f7bf0;
+  --primary: #2f7bf0;
+  --primary-foreground: #ffffff;
+  --primary-strong: #1d63d2;
+  --secondary: #e9eff8;
+  --secondary-foreground: #16233c;
+  --accent: #e3eefa;
+  --accent-foreground: #1d5cc4;
+  --destructive: #e0314b;
+  --destructive-foreground: #ffffff;
+  --success: #0eaa6d;
+  --success-foreground: #ffffff;
+  --warning: #d97706;
+  --info: #2f7bf0;
+  --radius: 8px;
+  --surface-glow: rgba(78, 150, 251, 0.06);
+}
+
+.dark {
+  --background: #050a14;
+  --foreground: #e8eefb;
+  --card: #0a1220;
+  --card-foreground: #e8eefb;
+  --muted: #101b30;
+  --muted-foreground: #8294b4;
+  --border: #17253f;
+  --input: #17253f;
+  --ring: #4e96fb;
+  --primary: #4e96fb;
+  --primary-foreground: #051226;
+  --primary-strong: #7cb2ff;
+  --secondary: #101b30;
+  --secondary-foreground: #dbe6f9;
+  --accent: #12223e;
+  --accent-foreground: #8cbcff;
+  --destructive: #f6465d;
+  --destructive-foreground: #ffffff;
+  --success: #16c784;
+  --success-foreground: #04121c;
+  --warning: #f0b90b;
+  --info: #58a6ff;
+  --surface-glow: rgba(78, 150, 251, 0.1);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-strong: var(--primary-strong);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  color-scheme: light;
+  scroll-padding-top: calc(5rem + env(safe-area-inset-top));
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 15px;
+  line-height: 1.6;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Page container — wider than the reference docs site: this is a data terminal */
+.container-page {
+  max-width: 1120px;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+
+@media (min-width: 640px) {
+  .container-page {
+    padding-inline: 1.5rem;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--primary) 30%, transparent);
+}
+
+/* Tabular numbers everywhere data is displayed */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Live pulse dot */
+.live-dot {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--success);
+}
+
+.live-dot::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  border: 1px solid var(--success);
+  animation: live-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes live-ping {
+  0% {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  80%,
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+/* New-row flash when the feed updates */
+@keyframes signal-flash {
+  0% {
+    background-color: color-mix(in oklab, var(--primary) 16%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.signal-flash {
+  animation: signal-flash 2.4s ease-out 1;
+}
+
+
+/* Mobile signal drawer: slides from the bottom, numbers pop in */
+@keyframes drawer-in {
+  from {
+    transform: translateY(120%);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes drawer-out {
+  from {
+    transform: none;
+    opacity: 1;
+  }
+  to {
+    transform: translateY(120%);
+    opacity: 0;
+  }
+}
+
+.signal-drawer {
+  /* iOS sheet presentation curve: fast out, soft settle */
+  animation: drawer-in 0.45s cubic-bezier(0.32, 0.72, 0, 1) 1;
+}
+
+.signal-drawer.closing {
+  animation: drawer-out 0.3s cubic-bezier(0.5, 0, 0.85, 0.4) 1 forwards;
+}
+
+@keyframes drawer-bar {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+.drawer-bar {
+  animation: drawer-bar 10s linear forwards;
+}
+
+@keyframes num-pop {
+  0% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.num-pop {
+  animation: num-pop 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) 1;
+}
+
+.num-pop-late {
+  animation: num-pop 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) 0.12s 1 backwards;
+}
+
+/* Media query block boundary marker for insertion */
+
+/* Telegram invite: bottom sheet on mobile, centered pop on desktop */
+@keyframes invite-up {
+  from {
+    transform: translateY(28px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes invite-pop {
+  from {
+    transform: scale(0.96) translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.invite-panel {
+  animation: invite-pop 0.35s cubic-bezier(0.32, 0.72, 0, 1) 1;
+}
+
+@media (max-width: 639px) {
+  .invite-panel {
+    animation: invite-up 0.45s cubic-bezier(0.32, 0.72, 0, 1) 1;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation: fade-in 0.3s ease-out 1;
+}
+
+.fade-in.closing {
+  animation: fade-out 0.28s ease-in 1 forwards;
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Legal pages typography */
+.legal h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-top: 2rem;
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+}
+
+.legal p,
+.legal li {
+  color: var(--muted-foreground);
+  margin-bottom: 0.5rem;
+}
+
+.legal ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.legal a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.legal table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin: 0.75rem 0;
+}
+
+/* Wide legal tables scroll horizontally inside small screens instead of breaking layout */
+@media (max-width: 640px) {
+  .legal table {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
+.legal th,
+.legal td {
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+}
+
+.legal th {
+  background: var(--muted);
+  font-weight: 600;
+}

@@ -1,0 +1,93 @@
+// EtherSignals data model.
+//
+// Conventions (mirroring the TensorSave/BlackFridayList reference architecture):
+// - Enum-ish fields are plain strings validated at the boundary by zod
+//   (src/lib/constants.ts) — keeps migrations cheap and schema portable.
+// - Price fields are Decimal(24,10) to avoid float drift; the API layer
+//   serializes them as strings (see src/lib/signals/dto.ts).
+// - Timestamps are timestamptz(3) (UTC in storage, localized at render).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// One GTrading "signal.trend" push — a full five-timeframe snapshot for ETH.
+model Signal {
+  id String @id @default(cuid())
+
+  /// Push timestamp from the producer (`ts`, unix ms). Unique: the producer
+  /// may repeat a state at merge-window boundaries and retries failed
+  /// deliveries once — dedupe happens here, so retries are no-ops.
+  pushedAt DateTime @unique @db.Timestamptz(3)
+
+  /// Event type from the producer; currently always "signal.trend".
+  type String @default("signal.trend")
+
+  /// Trading pair, e.g. "ETHUSDT" (uppercased on ingest).
+  symbol String
+
+  /// futures | spot
+  marketType String @default("futures")
+
+  /// Latest price at push time.
+  price Decimal? @db.Decimal(24, 10)
+
+  /// Timeframe that triggered this push (2m | 5m | 30m | 2h | 1d).
+  timeframe String
+
+  /// Trend regime of the triggering timeframe
+  /// (strong_up | up | neutral | down | strong_down).
+  regime String
+
+  /// Composite score of the triggering timeframe, [-1, 1].
+  score Float
+
+  /// Exact Telegram-channel text of this signal (multi-line).
+  message String?
+
+  /// Full five-timeframe board snapshot (2m→5m→30m→2h→1d): regime, score,
+  /// continuation probability and patterns per timeframe. Null-safe JSON.
+  board Json?
+
+  /// Objective key levels (pivot/resistance/support/donchian/breakout).
+  /// Null = daily data insufficient (model warmup).
+  levels Json?
+
+  /// Ingest time (our server clock) — the feed is ordered by this.
+  receivedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  /// Original payload kept for audit (trimmed to 16 KB).
+  raw Json?
+
+  @@index([receivedAt(sort: Desc)])
+  @@index([symbol, receivedAt(sort: Desc)])
+}
+
+/// Anonymous web-push subscription (no accounts on this site).
+model PushSubscription {
+  id         String    @id @default(cuid())
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  lastSentAt DateTime? @db.Timestamptz(3)
+}
+
+/// Audit trail of every webhook delivery attempt (accepted / duplicate / rejected).
+model IngestLog {
+  id        String   @id @default(cuid())
+  ip        String?
+  /// accepted | duplicate | rejected
+  status    String
+  reason    String?
+  signalId  String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([createdAt(sort: Desc)])
+}

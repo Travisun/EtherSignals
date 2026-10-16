@@ -1,0 +1,44 @@
+# Development stack: app (hot reload needs `npm run dev` locally instead)
+# plus PostgreSQL. For production see docker-compose.prod.yml.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://ether:ether@db:5432/ethersignals
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      NEXT_PUBLIC_TELEGRAM_URL: ${NEXT_PUBLIC_TELEGRAM_URL:-https://t.me/EtherSignals}
+      WEBHOOK_SECRETS: ${WEBHOOK_SECRETS:?set WEBHOOK_SECRETS in .env}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ether
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ether}
+      POSTGRES_DB: ethersignals
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ether -d ethersignals"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    # Not exposed to the host by default; reach it from the app service only.
+    # For host access during development uncomment:
+    # ports:
+    #   - "127.0.0.1:54329:5432"
+
+volumes:
+  pgdata:
