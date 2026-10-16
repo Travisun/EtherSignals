@@ -45,6 +45,10 @@ docker compose up -d --build
 - 优雅降级：不配 `DATABASE_URL` 只写 JSON 日志；不配 `REDIS_URL` 单实例运行——**不会因为缺数据库而不可用**。
 - 交易数据（密钥、策略、学习状态）挂载在 `./data`，随容器删除而保留。
 - 多副本高可用：给多个副本配同一个 `REDIS_URL`，只有持有领导者锁的副本运行引擎。
+- **出站 IPv4 优先**：镜像内置 `NODE_OPTIONS=--dns-result-order=ipv4first`。容器桥接网络常见
+  "域名返回 AAAA 记录但实际没有 IPv6 出口"，v6 优先的连接会先挂起直到超时——设置后交易所
+  REST/WebSocket 一律先走 IPv4。需要恢复系统默认时，在 compose 的 `app.environment` 里覆盖
+  `NODE_OPTIONS` 即可。
 
 ### 方式 C：生产部署要点
 
