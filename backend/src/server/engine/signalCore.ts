@@ -9,9 +9,9 @@ import type { Candle, MarketType, Timeframe, TrendRegime } from '@/core/types';
 // with the rule engine. Limits are picked so every TF carries enough CLOSED
 // bars for EMA200 warmup (~200) plus a ~250-sample walk-forward tail.
 export const SIGNAL_TFS: Timeframe[] = ['2m', '5m', '30m', '2h', '1d'];
-export const ACQUIRE_LIMIT: Record<Timeframe, number> = { '1m': 500, '2m': 500, '5m': 500, '15m': 500, '30m': 500, '1h': 500, '2h': 500, '4h': 500, '6h': 500, '12h': 500, '1d': 500, '3d': 500, '1w': 500, '1M': 500 };
+export const ACQUIRE_LIMIT: Record<Timeframe, number> = { '1m': 500, '2m': 500, '5m': 500, '15m': 500, '30m': 500, '1h': 500, '2h': 500, '4h': 500, '6h': 500, '8h': 500, '12h': 500, '1d': 500, '2d': 500, '3d': 500, '1w': 500, '1M': 500 };
 /** trend changes on fast TFs must persist this many closed bars before pushing */
-export const CONFIRM_BARS: Record<Timeframe, number> = { '1m': 2, '2m': 2, '5m': 2, '15m': 1, '30m': 1, '1h': 1, '2h': 1, '4h': 1, '6h': 1, '12h': 1, '1d': 1, '3d': 1, '1w': 1, '1M': 1 };
+export const CONFIRM_BARS: Record<Timeframe, number> = { '1m': 2, '2m': 2, '5m': 2, '15m': 1, '30m': 1, '1h': 1, '2h': 1, '4h': 1, '6h': 1, '8h': 1, '12h': 1, '1d': 1, '2d': 1, '3d': 1, '1w': 1, '1M': 1 };
 export const SYMBOL = (process.env.GT_SIGNAL_SYMBOL || 'ETHUSDT').toUpperCase();
 export const MARKET: MarketType = (process.env.GT_SIGNAL_MARKET as MarketType) || 'futures';
 export const ENABLED = process.env.GT_SIGNALS !== '0';

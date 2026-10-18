@@ -88,6 +88,29 @@ async function main() {
     check('candles ok', status === 200 && json?.ok === true && Array.isArray(json?.data?.candles));
   }
   {
+    // multi-TF new-high/new-low ladder (server-side evaluation, exchange-free)
+    const { json } = await jfetch('/api/market/levels?marketType=futures&symbol=BTCUSDT');
+    const lv = json?.data?.levels;
+    check(
+      'levels ladder shape',
+      json?.ok === true && typeof lv?.price === 'number' && lv?.donN >= 1 && Array.isArray(lv?.rows),
+      json?.error,
+    );
+    const row = lv?.rows?.[0];
+    check(
+      'levels row shape',
+      row == null || (typeof row.tf === 'string' && typeof row.barHigh === 'number' && typeof row.barLow === 'number'
+        && typeof row.nh === 'boolean' && typeof row.donUp === 'boolean'),
+    );
+  }
+  {
+    // synthetic timeframe bootstrap through the tiered store route
+    const { json } = await jfetch('/api/market/candles?marketType=futures&symbol=BTCUSDT&tf=8h&limit=50');
+    const candles = json?.data?.candles;
+    const aligned = Array.isArray(candles) && candles.every((c) => c.time % 28800 === 0);
+    check('8h synthetic candles', json?.ok === true && aligned, json?.error);
+  }
+  {
     const { json } = await jfetch('/api/market/book?marketType=futures&symbol=BTCUSDT');
     check('book shape', json?.ok === true && Array.isArray(json?.data?.asks) && Array.isArray(json?.data?.bids), json?.error);
   }

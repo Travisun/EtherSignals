@@ -4,6 +4,7 @@ import { ruleEngine } from './ruleEngine';
 import { gridEngine } from './grid';
 import { PrivateStream } from './private';
 import { signalEngine } from './signalEngine';
+import { marketHistory } from './marketHistory';
 import { strategiesRepo, settingsRepo, backtestRepo, botsRepo, equityRepo } from '@/server/store/repos';
 import { notify } from '@/server/events/notifier';
 import { logAudit } from '@/server/store/pg';
@@ -81,6 +82,11 @@ export class Runtime {
       // multi-timeframe prediction signals (default: ETHUSDT 2m/5m/30m/2h/1d)
       await signalEngine.start().catch((e) => console.error('[runtime] signal engine:', e));
 
+      // tiered market-history capture (1m/1h/1d JSONL store) + browser relay
+      await marketHistory.start();
+      const { marketRelay } = await import('./marketRelay');
+      marketRelay.attach();
+
       this.accountTimer = setInterval(async () => {
         try {
           const summary = await getAccountSummary();
@@ -136,6 +142,11 @@ export class Runtime {
     for (const id of gridEngine.runningIds) gridEngine.stopBot(id);
     this.privateStream.stop();
     signalEngine.stop();
+    marketHistory.stop();
+    const { marketRelay } = await import('./marketRelay');
+    marketRelay.stop();
+    const { levelsService } = await import('./levelsService');
+    levelsService.stop();
     candleService.stop();
     this.leader?.stop();
     this.leader = null;

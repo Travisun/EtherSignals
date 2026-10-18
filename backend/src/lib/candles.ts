@@ -1,4 +1,5 @@
 import type { Candle, Timeframe } from '@/core/types';
+import { tfSeconds } from '@/lib/format';
 
 /**
  * Synthetic timeframes: Bitget does not natively provide 2-minute / 2-hour
@@ -8,15 +9,18 @@ import type { Candle, Timeframe } from '@/core/types';
 export const SYNTH_TF: Partial<Record<Timeframe, { base: Timeframe; seconds: number }>> = {
   '2m': { base: '1m', seconds: 120 },
   '2h': { base: '1h', seconds: 7200 },
+  '8h': { base: '1h', seconds: 28800 },
+  '2d': { base: '1d', seconds: 172800 },
 };
 
 export function synthSpec(tf: Timeframe) {
   return SYNTH_TF[tf] ?? null;
 }
 
-/** Bar multiplier vs. the base series (2m→2×1m, 2h→2×1h, others→1). */
+/** Bar multiplier vs. the base series (2m→2×1m, 8h→8×1h, others→1). */
 export function tfMultiplier(tf: Timeframe): number {
-  return SYNTH_TF[tf] ? 2 : 1;
+  const spec = SYNTH_TF[tf];
+  return spec ? spec.seconds / tfSeconds(spec.base) : 1;
 }
 
 export function upsertCandle(arr: Candle[], c: Candle): void {

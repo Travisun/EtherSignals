@@ -7,6 +7,10 @@ const T: Record<string, { zh: string; en: string }> = {
   price_cross_up: { zh: '价格上穿 {value}', en: 'Price crosses above {value}' },
   price_cross_down: { zh: '价格下穿 {value}', en: 'Price crosses below {value}' },
   price_change_pct: { zh: '{bars}根K线涨跌幅 {pct}%', en: '{bars}-bar change {pct}%' },
+  price_new_high: { zh: '创本K新高', en: 'New high of forming bar' },
+  price_new_low: { zh: '创本K新低', en: 'New low of forming bar' },
+  donchian_break_up: { zh: '突破{bars}根K线新高', en: 'Breaks {bars}-bar high' },
+  donchian_break_down: { zh: '跌破{bars}根K线新低', en: 'Breaks {bars}-bar low' },
   rsi_above: { zh: 'RSI({period}) > {value}', en: 'RSI({period}) > {value}' },
   rsi_below: { zh: 'RSI({period}) < {value}', en: 'RSI({period}) < {value}' },
   macd_golden: { zh: 'MACD 金叉', en: 'MACD golden cross' },
@@ -47,6 +51,10 @@ export const CONDITION_META: Record<string, { params: { key: string; label: stri
       { key: 'pct', label: '涨跌幅%', def: 3 },
     ],
   },
+  price_new_high: { params: [] },
+  price_new_low: { params: [] },
+  donchian_break_up: { params: [{ key: 'bars', label: 'K线数量', def: 20 }] },
+  donchian_break_down: { params: [{ key: 'bars', label: 'K线数量', def: 20 }] },
   rsi_above: {
     params: [
       { key: 'period', label: '周期', def: 14 },

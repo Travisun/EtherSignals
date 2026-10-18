@@ -83,7 +83,8 @@ export function fmtQty(v: number | undefined | null, maxDecimals = 8): string {
 export function tfSeconds(tf: Timeframe): number {
   const map: Record<Timeframe, number> = {
     '1m': 60, '2m': 120, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200,
-    '4h': 14400, '6h': 21600, '12h': 43200, '1d': 86400, '3d': 259200, '1w': 604800, '1M': 2592000,
+    '4h': 14400, '6h': 21600, '8h': 28800, '12h': 43200, '1d': 86400, '2d': 172800,
+    '3d': 259200, '1w': 604800, '1M': 2592000,
   };
   return map[tf];
 }
@@ -98,15 +99,15 @@ export function tfToGranularity(tf: Timeframe, marketType: 'spot' | 'futures'): 
   if (marketType === 'futures') {
     const map: Record<Timeframe, string> = {
       '1m': '1m', '2m': '1m', '5m': '5m', '15m': '15m', '30m': '30m',
-      '1h': '1H', '2h': '1H', '4h': '4H', '6h': '6H', '12h': '12H', '1d': '1D',
-      '3d': '3D', '1w': '1W', '1M': '1M',
+      '1h': '1H', '2h': '1H', '4h': '4H', '6h': '6H', '8h': '1H', '12h': '12H', '1d': '1D',
+      '2d': '1D', '3d': '3D', '1w': '1W', '1M': '1M',
     };
     return map[tf];
   }
   const map: Record<Timeframe, string> = {
     '1m': '1min', '2m': '1min', '5m': '5min', '15m': '15min', '30m': '30min',
-    '1h': '1h', '2h': '1h', '4h': '4h', '6h': '6h', '12h': '12h', '1d': '1day',
-    '3d': '3day', '1w': '1week', '1M': '1M',
+    '1h': '1h', '2h': '1h', '4h': '4h', '6h': '6h', '8h': '1h', '12h': '12h', '1d': '1day',
+    '2d': '1day', '3d': '3day', '1w': '1week', '1M': '1M',
   };
   return map[tf];
 }
@@ -115,8 +116,8 @@ export function tfToGranularity(tf: Timeframe, marketType: 'spot' | 'futures'): 
 export function tfToWsChannel(tf: Timeframe): string {
   const map: Record<Timeframe, string> = {
     '1m': 'candle1m', '2m': 'candle1m', '5m': 'candle5m', '15m': 'candle15m', '30m': 'candle30m',
-    '1h': 'candle1H', '2h': 'candle1H', '4h': 'candle4H', '6h': 'candle6H', '12h': 'candle12H',
-    '1d': 'candle1D', '3d': 'candle3D', '1w': 'candle1W', '1M': 'candle1M',
+    '1h': 'candle1H', '2h': 'candle1H', '4h': 'candle4H', '6h': 'candle6H', '8h': 'candle1H',
+    '12h': 'candle12H', '1d': 'candle1D', '2d': 'candle1D', '3d': 'candle3D', '1w': 'candle1W', '1M': 'candle1M',
   };
   return map[tf];
 }

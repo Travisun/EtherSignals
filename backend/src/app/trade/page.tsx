@@ -15,6 +15,7 @@ import { OrderBook, TradesTape } from '@/components/trade/OrderBook';
 import { OrderForm } from '@/components/trade/OrderForm';
 import { PositionsTable, OrdersTable } from '@/components/trade/TradePanels';
 import { SignalStrip } from '@/components/trade/SignalStrip';
+import { NhnlStrip } from '@/components/trade/NhnlStrip';
 import { useSignals } from '@/stores/signals';
 import { useMarketStore, marketKey, loadCandles, loadBook, loadTrades, loadTickers, useMarketSubscriptions } from '@/lib/marketWs';
 import { useChartPrefs, type DrawTool } from '@/stores/chart';
@@ -133,7 +134,9 @@ export default function TradePage() {
     { channel: 'ticker', marketType, instId: symbol },
     { channel: 'books15', marketType, instId: symbol },
     { channel: 'trade', marketType, instId: symbol },
-    ...panes.map((p) => ({ channel: 'candle' + tfChannel(p.tf), marketType, instId: p.symbol })),
+    // candle subs carry the logical tf — the server relays already-aggregated
+    // windows (incl. synthetics 2m/2h/8h/2d) keyed `${marketType}:${symbol}:${tf}`
+    ...panes.map((p) => ({ channel: 'candle', tf: p.tf, marketType, instId: p.symbol })),
   ]);
 
   const ticker = useMarketStore((s) => s.tickers[marketKey(marketType, symbol)]);
@@ -245,6 +248,13 @@ export default function TradePage() {
                 }
                 setTf(s.tf);
               }}
+            />
+            <NhnlStrip
+              className="border-b border-gray-100 px-3 py-1.5"
+              marketType={marketType}
+              symbol={symbol}
+              activeTf={tf}
+              onPickTf={setTf}
             />
             <ChartToolbar
               symbol={symbol} marketType={marketType} tf={tf} onTf={setTf}
@@ -513,15 +523,6 @@ function HeaderStat({ label, value, tone }: { label: string; value: React.ReactN
       <span className={cn('text-xs tabular-nums text-gray-700', tone)}>{value}</span>
     </div>
   );
-}
-
-function tfChannel(tf: Timeframe): string {
-  // synthetic TFs (2m/2h) subscribe their base channel: 1m / 1H
-  const map: Record<Timeframe, string> = {
-    '1m': '1m', '2m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1H', '2h': '1H',
-    '4h': '4H', '6h': '6H', '12h': '12H', '1d': '1D', '3d': '3D', '1w': '1W', '1M': '1M',
-  };
-  return map[tf];
 }
 
 function useDefaultPrefs() {

@@ -59,8 +59,9 @@ HTTPS_PROXY=http://127.0.0.1:7897 npm run dev
   端口写错（代理没在监听）时启动日志会立刻打印 `[proxy] ... 拒绝连接 (ECONNREFUSED)` 提示，
   服务端 API 报错也会带上同样的可操作信息。
 
-- 浏览器端行情走 **直连 `wss://ws.bitget.com`**（最低延迟）；若浏览器也无法直连，工作台自动降级为
-  **服务端中继**（盘口/成交/K线约 5 秒刷新，盘口上方会显示降级提示条）。
+- **浏览器端行情全部由本服务器中继**（Socket.IO `market:*` 房间 + 分层历史库 REST），浏览器不再直连
+  `wss://ws.bitget.com`——只需服务器能到交易所，任何客户端网络都能用；App Socket 断线时浏览器自动
+  降级为对本服务器 REST 的轮询（盘口/成交/K线约 5 秒刷新）。
 - 服务端到交易所的请求失败会返回 502 与明确错误信息（`NETWORK` / `TIMEOUT`），不再是无从排查的 500。
 
 ### Docker 一键编排（推荐部署方式）
@@ -84,22 +85,35 @@ docker compose up -d --build
 
 ### 交易对与周期
 
-合约默认 `usdt-futures`（BTCUSDT 等），现货 `SPOT`。K 线周期共 **14 档**：
-`1m 2m 5m 15m 30m 1h 2h 4h 6h 12h 1d 3d 1w 1M` — 其中 **2m/2h** 由本地从 1m/1h 实时聚合合成（Bitget 无原生 2 分钟/2 小时线），图表、策略跨图条件与回测三层均一致支持。
+合约默认 `usdt-futures`（BTCUSDT 等），现货 `SPOT`。K 线周期共 **16 档**：
+`1m 2m 5m 15m 30m 1h 2h 4h 6h 8h 12h 1d 2d 3d 1w 1M` — 其中 **2m/2h/8h/2d** 由本地从 1m/1h/1d 实时聚合合成（Bitget 无原生 2 分钟/2 小时/8 小时/2 日线），图表、策略跨图条件与回测三层均一致支持。
 
-图表实时性：浏览器直连 Bitget WS 逐笔推送 + **30 秒 REST 对账**（防休眠/断线丢帧）+ 页面回到前台立即对齐。
+行情链路：**浏览器不直连交易所**。服务器端 `CandleService`（单条交易所 WS）+ 分层历史库（1m/1h/1d JSONL，约 5.5 天 / 166 天 / 6.8 年深度）统一供给；历史 K 线经 `/api/market/candles`（服务器库优先、异步回填），实时 candle / ticker / 盘口 / 成交经 Socket.IO `market:*` 房间中继；App Socket 断线时浏览器自动退化为对本服务器 REST 的轮询。多客户端共用服务器的单条交易所连接，互不冲击交易所限频。
+
+## 🪝 新高新低阶梯（跨图核心参考）
+
+交易页「新高新低」条带为每个周期（`1m 1h 4h 8h 12h 1d 2d 3d 1w 1M`）回答三个问题（全部针对**实时价**）：
+
+1. **本K新高/新低** — 现价是否正处于当前未收盘 K 柱的运行最高/最低点
+2. **破前K高/低** — 现价是否突破上一根收盘 K 柱的高/低点
+3. **破 N 根通道** — 现价是否突破前 N 根（默认 20，`donN` 可调）收盘 K 的 Donchian 通道
+
+服务端计算（`levelsService`，任一阶梯窗口更新即 500ms 节流推送 `levels:update`），REST 初值 `GET /api/market/levels`。同一套口径已接入策略条件：`price_new_high` / `price_new_low` / `donchian_break_up` / `donchian_break_down`（配 `tf` 覆盖即为跨图条件，回测同口径支持）。
 
 ## 🧠 架构
 
 ```
 浏览器 (React + Next.js App Router)
-├── 直连 Bitget 公共 WS（行情最低延迟）
-├── Socket.IO /ws ← 服务端推送（通知/账户/持仓/订单/引擎状态）
-└── REST /api/*
+├── Socket.IO /ws ← 全部行情中继（candle/ticker/book/trade/levels）
+│                    + 服务端推送（通知/账户/持仓/订单/引擎状态/信号）
+└── REST /api/*   ← 历史K线（服务器分层库优先）、账户、策略、回测…
 
-Node 服务端（单进程，server.mjs；多副本由 Redis 选主）
+Node 服务端（单进程，server.mjs；多副本由 Redis 选主；唯一交易所客户端）
 ├── Runtime
 │   ├── CandleService      多窗口 K 线中枢（策略跨图数据源）+ Ticker 缓存
+│   ├── MarketHistory      分层历史库：1m/1h/1d JSONL 捕获+回填（data/market/）
+│   ├── MarketRelay        行情房间中继（candle 300ms / book 400ms / trade 300ms）
+│   ├── LevelsService      新高新低阶梯（10 周期 × 本K/前K/Donchian）500ms 推送
 │   ├── PrivateStream      私有 WS → 成交通知 + UI 快照推送
 │   ├── RuleEngine         多因子条件评估（跨周期/跨标的）
 │   │                      → 冷却 → 多账户并行扇出 → 通知/审计/统计

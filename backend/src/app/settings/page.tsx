@@ -181,6 +181,24 @@ function GeneralTab({ settings, patch, save, saving }: TabProps) {
         </div>
       </div>
 
+      <div className="rounded-xl border border-gray-200 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-gray-900">{t('settings.historyTitle')}</div>
+            <p className="mt-0.5 text-2xs leading-relaxed text-gray-500">{t('settings.historyDesc')}</p>
+          </div>
+          <Switch
+            checked={settings.history?.enabled ?? true}
+            onChange={(v) => patch({ history: { ...(settings.history ?? { watchlist: [] }), enabled: v } })}
+          />
+        </div>
+        <WatchlistEditor
+          entries={settings.history?.watchlist ?? []}
+          defaultMarket={g.defaultMarketType}
+          onChange={(watchlist) => patch({ history: { ...(settings.history ?? { enabled: true }), watchlist } })}
+        />
+      </div>
+
       <div className="flex justify-end">
         <Button
           loading={saving}
@@ -1228,6 +1246,76 @@ function DataTab() {
         }}
         confirmLabel={t('common.confirm')}
       />
+    </div>
+  );
+}
+
+// ─── History watchlist editor (server-side market history capture) ───────────
+
+function WatchlistEditor({
+  entries, defaultMarket, onChange,
+}: {
+  entries: string[];
+  defaultMarket: 'spot' | 'futures';
+  onChange: (entries: string[]) => void;
+}) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState('');
+
+  const add = () => {
+    const raw = draft.trim().toUpperCase();
+    if (!raw) return;
+    const normalized = raw.includes(':') ? raw : `${defaultMarket}:${raw}`;
+    const [marketType, symbol] = normalized.split(':');
+    if (!symbol || !['spot', 'futures'].includes(marketType) || !/^[A-Z0-9]+$/.test(symbol)) {
+      setDraft('');
+      return;
+    }
+    if (!entries.includes(normalized)) onChange([...entries, normalized]);
+    setDraft('');
+  };
+
+  return (
+    <div className="mt-3 border-t border-gray-200/70 pt-3">
+      <div className="text-2xs font-medium text-gray-500">{t('settings.historyWatchlist')}</div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        {entries.length === 0 && (
+          <span className="text-2xs text-gray-400">{t('settings.historyWatchlistEmpty')}</span>
+        )}
+        {entries.map((entry) => (
+          <span
+            key={entry}
+            className="flex items-center gap-1 rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-2xs text-gray-600 dark:border-gray-700 dark:bg-gray-800/40"
+          >
+            {entry}
+            <button
+              type="button"
+              onClick={() => onChange(entries.filter((x) => x !== entry))}
+              className="text-gray-300 transition-colors hover:text-down"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <Input
+          className="max-w-64"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              add();
+            }
+          }}
+          placeholder="futures:BTCUSDT"
+        />
+        <Button size="xs" variant="outline" onClick={add}>
+          <Plus className="h-3 w-3" /> {t('common.add')}
+        </Button>
+      </div>
+      <p className="mt-1.5 text-2xs leading-relaxed text-gray-400">{t('settings.historyWatchlistHint')}</p>
     </div>
   );
 }

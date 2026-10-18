@@ -54,6 +54,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     pinLocked: false,
     devices: [],
   },
+  history: { enabled: true, watchlist: [] },
   onboarding: { completed: false },
 };
 
@@ -85,6 +86,7 @@ class SettingsRepo {
         risk: { ...DEFAULT_SETTINGS.risk, ...stored.risk },
         mcp: { ...DEFAULT_SETTINGS.mcp, ...stored.mcp },
         security: { ...DEFAULT_SETTINGS.security, ...stored.security, devices: stored.security?.devices ?? [] },
+        history: { ...DEFAULT_SETTINGS.history, ...stored.history, watchlist: stored.history?.watchlist ?? [] },
         onboarding: { ...DEFAULT_SETTINGS.onboarding, ...stored.onboarding },
       };
       this.cacheMtime = m;
@@ -112,10 +114,11 @@ class SettingsRepo {
         webpush: { ...cur.notifications.webpush, ...(patch.notifications?.webpush ?? {}) },
       },
       llm: patch.llm ? { ...cur.llm, ...patch.llm } : cur.llm,
-      risk: { ...cur.risk, ...(patch.risk ?? {}) },
-      mcp: { ...cur.mcp, ...(patch.mcp ?? {}) },
-      security: { ...cur.security, ...(patch.security ?? {}) },
-      accounts: patch.accounts ?? cur.accounts,
+        risk: { ...cur.risk, ...(patch.risk ?? {}) },
+        mcp: { ...cur.mcp, ...(patch.mcp ?? {}) },
+        security: { ...cur.security, ...(patch.security ?? {}) },
+        history: { ...cur.history, ...(patch.history ?? {}) },
+        accounts: patch.accounts ?? cur.accounts,
     };
     this.save(next);
     return next;

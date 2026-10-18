@@ -178,3 +178,31 @@ R3 = H+2·(PP−L)  S3 = L−2·(H−PP)
 | 品种/开关 | `GT_SIGNAL_SYMBOL`/`GT_SIGNAL_MARKET`/`GT_SIGNALS` | 环境变量 |
 
 **任何调整后**跑 `GET /api/signals?view=calibration` 对比 `selfAccuracy` 与 `flipsPer100Bars`（稳定性），并在跑数小时后查看 `optimizer.online` 的实盘判分——这是验证调整是否真正有效的唯一标准。
+
+---
+
+## 12. 新高新低阶梯（NHNL Ladder）
+
+> 位置：交易页「新高新低」条带 · REST `GET /api/market/levels?marketType&symbol&donN` · Socket 推送 `levels:update`
+> 周期阶梯：`1m 1h 4h 8h 12h 1d 2d 3d 1w 1M`（8h/2d 为本地合成档）
+> 计算位置：服务端 `levelsService`（任一阶梯窗口更新 → 500ms 节流推送），浏览器不直连交易所
+
+每个周期一行（`NhnlRow`），全部针对**实时价 price**（1m 未收盘 K 的最新 close，tick 级）评估：
+
+| 字段 | 含义 | 判定式 |
+|---|---|---|
+| `nh` / `nl` | **本K新高/新低**：现价正处于当前未收盘 K 柱的运行最高/最低点 | `price ≥ bar.high`（bar 极值已含最新 tick，等价于现价即本K最高） |
+| `brkUp` / `brkDown` | **破前K高/低**：现价突破上一根收盘 K 柱高/低点 | `price > prev.high` |
+| `donUp` / `donDown` | **破 N 根通道**：现价突破前 `donN` 根收盘 K 的 Donchian 通道（默认 20；`donN=1` 即退化为破前K） | `price > max(前N根high)` |
+| `barHigh/barLow` | 当前未收盘 K 的运行高/低 | — |
+| `prevHigh/prevLow` | 上一根收盘 K 的高/低 | — |
+| `donHigh/donLow` | Donchian 通道上下沿 | — |
+| `distHighPct/distLowPct` | 现价距本K高/低点的百分比距离（0 即 nh/nl 成立） | `(bar.high−price)/price×100` |
+
+**跨图解读**：多周期同时 `nh`+`donUp` = 共振突破（强）；仅小周期 `nh` 而大周期 `distHighPct` 仍大 = 小级别推进、大级别未破（回参考）。
+
+**同口径策略条件**（实时引擎与回测一致）：`price_new_high` / `price_new_low`（本K）、`donchian_break_up` / `donchian_break_down`（`bars` 参数，N 根通道）。配条件的 `tf` 覆盖即成跨图条件。
+
+**数据来源**：阶梯窗口由服务器 `CandleService` 持有（8 个原生频道 + 8h/2d 本地聚合），历史深度由分层历史库（`data/market/*.jsonl`：1m≈5.5天 / 1h≈166天 / 1d≈6.8年）支撑；`8h` 自 1h 聚合、`2d` 自 1d 聚合（UTC 对齐分桶）。
+
+**已知局限**：阶梯仅在服务器持有该品种全部 10 个窗口时完整（首次订阅需数秒填窗）；`1M` 行深度受交易所历史可得性限制；Donchian 用收盘 K 极值，不含盘中插针以外的未来数据（无前视）。

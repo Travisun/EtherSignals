@@ -31,6 +31,8 @@ export interface WsMessage {
 export class BitgetWs extends EventEmitter {
   private ws: WebSocket | null = null;
   private subs = new Map<string, WsSubArg>();
+  /** in-flight connect() handshake — concurrent subscribe() callers await it */
+  private connecting?: Promise<void>;
   private pingTimer?: NodeJS.Timeout;
   private reconnectTimer?: NodeJS.Timeout;
   private reconnectDelay = 1_000;
@@ -219,17 +221,24 @@ export class BitgetWs extends EventEmitter {
     if (this.closed) return;
     if (!this.connected) {
       try {
+        // concurrent subscribers share ONE connect attempt: a second caller
+        // must wait for the in-flight handshake instead of seeing "not
+        // connected" (this.ws is already assigned synchronously) and silently
+        // dropping its channels — that race starved the relay's trade feed
+        this.connecting ??= this.connect().finally(() => {
+          this.connecting = undefined;
+        });
+        await this.connecting;
+      } catch (e) {
         // a rejected connect() never fires 'close', so nothing else would
         // schedule a reconnect — drop the fresh entries so the NEXT subscribe
         // attempt retries the channel instead of assuming it is subscribed
-        if (!this.ws) await this.connect();
-        if (!this.connected) {
-          for (const a of fresh) this.subs.delete(this.keyOf(a));
-          return;
-        }
-      } catch (e) {
         for (const a of fresh) this.subs.delete(this.keyOf(a));
         throw e;
+      }
+      if (!this.connected) {
+        for (const a of fresh) this.subs.delete(this.keyOf(a));
+        return;
       }
     }
     this.send({ op: 'subscribe', args: fresh });

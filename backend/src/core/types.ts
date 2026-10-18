@@ -4,10 +4,10 @@ export type MarketType = 'spot' | 'futures';
 export type OrderSide = 'buy' | 'sell';
 export type TradeSide = 'open' | 'close';
 export type OrderType = 'limit' | 'market';
-export type Timeframe = '1m' | '2m' | '5m' | '15m' | '30m' | '1h' | '2h' | '4h' | '6h' | '12h' | '1d' | '3d' | '1w' | '1M';
+export type Timeframe = '1m' | '2m' | '5m' | '15m' | '30m' | '1h' | '2h' | '4h' | '6h' | '8h' | '12h' | '1d' | '2d' | '3d' | '1w' | '1M';
 export type EventLevel = 'info' | 'success' | 'warning' | 'error';
 
-export const TIMEFRAMES: Timeframe[] = ['1m', '2m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d', '3d', '1w', '1M'];
+export const TIMEFRAMES: Timeframe[] = ['1m', '2m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '2d', '3d', '1w', '1M'];
 
 export interface Ticker {
   symbol: string;
@@ -151,6 +151,10 @@ export type ConditionType =
   | 'price_cross_up'
   | 'price_cross_down'
   | 'price_change_pct'
+  | 'price_new_high'
+  | 'price_new_low'
+  | 'donchian_break_up'
+  | 'donchian_break_down'
   | 'rsi_above'
   | 'rsi_below'
   | 'macd_golden'
@@ -506,6 +510,13 @@ export interface McpConfig {
   token: string;
 }
 
+export interface HistoryConfig {
+  enabled: boolean;
+  /** server-side tiered market-history capture: symbols always tracked
+   *  ("marketType:SYMBOL"), independent of UI activity */
+  watchlist: string[];
+}
+
 export interface SecurityConfig {
   enabled: boolean;
   username: string;
@@ -543,6 +554,8 @@ export interface AppSettings {
   risk: RiskConfig;
   mcp: McpConfig;
   security: SecurityConfig;
+  /** server-side market history capture (tiered 1m/1h/1d store) */
+  history: HistoryConfig;
   /** first-run guided setup (account → 2FA → PIN → exchange) */
   onboarding: { completed: boolean; completedAt?: number; wizardStarted?: boolean };
   /** LLM agents (event/interval-driven tool-calling assistants) */
@@ -570,6 +583,12 @@ export interface ServerToClientEvents {
   'positions:update': (payload: { marketType: MarketType; positions: PositionRecord[] }) => void;
   'engine:status': (payload: EngineStatus) => void;
   'signals:update': (payload: SignalSnapshot) => void;
+  // ─── market relay (marketRelay.ts: browsers never touch the exchange) ───
+  'market:candle': (payload: { key: string; candles: Candle[] }) => void;
+  'market:ticker': (payload: { marketType: MarketType; tickers: Ticker[] }) => void;
+  'market:book': (payload: { key: string; book: Book }) => void;
+  'market:trade': (payload: { key: string; trades: PublicTrade[] }) => void;
+  'levels:update': (payload: NhnlSnapshot) => void;
 }
 
 export interface EngineStatus {
@@ -590,6 +609,47 @@ export interface EngineStatus {
   staleWindows?: number;
   halted?: { reason: string; ts: number; kind: string } | null;
   leader?: boolean;
+}
+
+// ─── Multi-TF new-high/new-low ladder (levelsService → UI / strategies) ──────
+
+/** One timeframe's row of the NHNL ladder. All booleans are evaluated at
+ *  `price` against the still-forming bar, the previous closed bar and the
+ *  Donchian channel of the N closed bars before it. */
+export interface NhnlRow {
+  tf: Timeframe;
+  /** open time (unix seconds) of the current forming bar */
+  barTime: number;
+  /** current bar's running extremes (include the latest price) */
+  barHigh: number;
+  barLow: number;
+  /** price is AT a new high / new low of the current forming bar */
+  nh: boolean;
+  nl: boolean;
+  /** previous CLOSED bar extremes (null when history is too short) */
+  prevHigh: number | null;
+  prevLow: number | null;
+  /** price broke the previous bar's high / low */
+  brkUp: boolean;
+  brkDown: boolean;
+  /** Donchian extremes over the `donN` closed bars before the current one */
+  donHigh: number | null;
+  donLow: number | null;
+  /** price broke the N-bar channel */
+  donUp: boolean;
+  donDown: boolean;
+  /** signed % distance from price to the current bar's high / low */
+  distHighPct: number | null;
+  distLowPct: number | null;
+}
+
+export interface NhnlSnapshot {
+  marketType: MarketType;
+  symbol: string;
+  price: number;
+  donN: number;
+  rows: NhnlRow[];
+  at: number;
 }
 
 // ─── Multi-timeframe prediction signals (signalEngine → UI) ──────────────────

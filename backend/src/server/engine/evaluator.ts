@@ -97,6 +97,24 @@ function checkOne(c: Condition, ctx: EvalCtx): { matched: boolean } {
       const target = n(c.params.pct, 3);
       return { matched: target >= 0 ? changePct >= target : changePct <= target };
     }
+    case 'price_new_high':
+      // the forming bar's extremes include the current price, so "at a new
+      // high" means the price IS that bar's high right now
+      return { matched: p >= candles[i].high };
+    case 'price_new_low':
+      return { matched: p <= candles[i].low };
+    case 'donchian_break_up':
+    case 'donchian_break_down': {
+      const bars = Math.max(1, Math.floor(n(c.params.bars, 20)));
+      if (candles.length < bars + 1) return { matched: false };
+      // the `bars` CLOSED bars before the current one (bars=1 ⇒ previous bar)
+      const window = candles.slice(i - bars, i);
+      const high = Math.max(...window.map((x) => x.high));
+      const low = Math.min(...window.map((x) => x.low));
+      return c.type === 'donchian_break_up'
+        ? { matched: p > high }
+        : { matched: p < low };
+    }
     case 'rsi_above':
     case 'rsi_below': {
       const period = Math.max(2, Math.floor(n(c.params.period, 14)));
