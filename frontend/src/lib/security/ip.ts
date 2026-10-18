@@ -3,17 +3,32 @@ import { rateLimit, RateLimitError } from "./rate-limit";
 /**
  * Resolve the client IP for rate limiting.
  *
- * TRUST_PROXY=true (default, site is deployed behind nginx/caddy): take the
- * left-most X-Forwarded-For entry, which is the original client as set by our
- * own proxy; spoofed XFF headers from clients are overwritten by the proxy.
- * TRUST_PROXY=false: the socket-level address is the only trustworthy source,
- * and Next exposes it via the x-forwarded-for/x-real-ip internals; we then
- * bucket everything under the socket IP instead.
+ * Production chain: Client → Cloudflare → nginx → Next.
+ *  1. `CF-Connecting-IP` — set by Cloudflare from the TCP peer and
+ *     overwritten for clients, so it is the authoritative real client
+ *     address (IPv4 or IPv6). Always preferred when present; without it a
+ *     CF chain would rate-limit everyone under the Cloudflare edge IP.
+ *  2. TRUST_PROXY=true (nginx/caddy directly in front): left-most
+ *     X-Forwarded-For entry — the original client as written by our own
+ *     proxy (`$proxy_add_x_forwarded_for` style). Spoofed XFF from clients
+ *     is overwritten by the proxy.
+ *  3. TRUST_PROXY=false: bucket everything under "unknown" — the socket
+ *     address is the only trustworthy source and Next does not expose it.
+ *
+ * IPv4 and IPv6 are both valid bucket keys (normalizeIp lowercases IPv6 and
+ * unwraps IPv4-mapped `::ffff:a.b.c.d` so dual-stack clients share a bucket).
+ *
+ * Hardening note: a client hitting the origin DIRECTLY (bypassing
+ * Cloudflare) can forge CF-Connecting-IP and rotate buckets. Strict
+ * deployments should additionally allowlist Cloudflare's published IP
+ * ranges in the nginx server block (`allow`/`deny` or real_ip module).
  */
 export function clientIpFromHeaders(
   headers: Headers,
   trustProxy: boolean,
 ): string {
+  const cfIp = headers.get("cf-connecting-ip");
+  if (cfIp) return normalizeIp(cfIp.trim());
   if (trustProxy) {
     const xff = headers.get("x-forwarded-for");
     if (xff) {
