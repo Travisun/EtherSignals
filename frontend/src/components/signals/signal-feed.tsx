@@ -21,7 +21,7 @@ type Connection = "live" | "error" | "limited";
  * Live signal feed.
  *
  * Polling contract (designed around the 4 req/min/IP budget):
- *  - auto-poll every 20s → 3 req/min steady state; 1 spare for manual refresh
+ *  - auto-poll every 4s → 15 req/min steady state (matches the per-IP limit)
  *  - hidden tab: fetches are deferred, an immediate catch-up runs on focus
  *  - 429 responses: back off for the server-provided Retry-After
  *  - each poll sends sinceId so idle cycles are cheap server-side
@@ -361,7 +361,7 @@ export function SignalFeed({
             </h2>
             <p className="text-[11px] text-muted-foreground">
               Latest {signals.length}
-              <span className="hidden md:inline"> · auto-refreshes every 20s ·</span>
+              <span className="hidden md:inline"> · auto-refreshes every 4s ·</span>
               <span className="md:hidden"> ·</span>{" "}
               <a
                 href="/guide"

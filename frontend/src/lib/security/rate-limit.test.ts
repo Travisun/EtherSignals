@@ -36,10 +36,10 @@ describe("rateLimit", () => {
   });
 });
 
-describe("checkIpRateLimit (signalsApi = 4/min)", () => {
+describe("checkIpRateLimit (signalsApi = 15/min)", () => {
   beforeEach(() => resetRateLimits());
 
-  it("enforces the documented 4/min policy per IP", () => {
+  it("enforces the documented 15/min policy per IP", () => {
     for (let i = 0; i < IP_POLICIES.signalsApi.limit; i++) {
       expect(() => checkIpRateLimit("signalsApi", "1.2.3.4")).not.toThrow();
     }

@@ -10,8 +10,9 @@ export const dynamic = "force-dynamic";
  * GET /api/market/candles — public ETHUSDT candles for the chart page.
  *
  * Two protection layers so browser fleets never reach the exchange:
- *  1. per-IP: 1 request / 10s (sliding window, same infra as webhook ingest)
- *  2. process-wide 10s memory cache with single-flight: all IPs share one
+ *  1. per-IP: 15 requests / 60s (1 per 4s, sliding window, same infra as
+ *     webhook ingest)
+ *  2. process-wide 4s memory cache with single-flight: all IPs share one
  *     upstream Bitget fetch per window
  */
 export async function GET(request: Request) {

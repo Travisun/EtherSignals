@@ -11,5 +11,5 @@ export const site = {
     process.env.NEXT_PUBLIC_TELEGRAM_URL || "https://t.me/EtherSignals",
 } as const;
 
-export const REFRESH_INTERVAL_MS = 20_000;
+export const REFRESH_INTERVAL_MS = 4_000;
 export const FEED_LIMIT = 100;

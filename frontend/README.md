@@ -118,7 +118,7 @@ the site is open — everything degrades gracefully.
 | --- | --- |
 | PostgreSQL storage | `prisma/schema.prisma`, `src/lib/db.ts` |
 | Single homepage, no auth | `src/app/page.tsx` (only content route) |
-| Webhook ingest, latest 100 on the page, 20s refresh + countdown | `src/app/api/webhooks/signals/route.ts`, `src/components/signals/signal-feed.tsx` |
+| Webhook ingest, latest 50 on the page, 4s refresh + countdown | `src/app/api/webhooks/signals/route.ts`, `src/components/signals/signal-feed.tsx` |
 | 4 req/min/IP rate limit | `src/lib/security/rate-limit.ts`, `ip.ts` |
 | Logo/favicon/PWA/chrome app + desktop notifications | `scripts/generate-icons.mjs`, `src/app/manifest.ts`, `public/sw.js`, `src/components/notifications/notification-button.tsx` |
 | Privacy / terms / disclaimer + cookie consent | `src/lib/legal.ts`, `src/components/consent/consent-banner.tsx` |

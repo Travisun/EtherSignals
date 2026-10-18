@@ -3,13 +3,13 @@ import { TelegramCTA } from "@/components/telegram/telegram-cta";
 import { getFeed, getFeedStats } from "@/lib/signals/dto";
 
 // The page shell is cached (ISR, 10s) so loads are served instantly from the
-// edge of our own process — the client feed takes over with 20s polling, so
+// edge of our own process — the client feed takes over with 4s polling, so
 // freshness is bounded by the poller, not by SSR.
-export const revalidate = 10;
+export const revalidate = 4;
 
 export default async function HomePage() {
   // Initial render reads PostgreSQL directly (no API round-trip, no rate-limit
-  // cost); the client feed then takes over with its 20s polling cycle.
+  // cost); the client feed then takes over with its 4s polling cycle.
   const [{ signals }, stats] = await Promise.all([getFeed({ limit: 50 }), getFeedStats()]);
 
   return (

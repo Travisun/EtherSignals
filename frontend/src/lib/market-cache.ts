@@ -1,12 +1,12 @@
 
 /**
  * Process-wide market-data memory cache with single-flight dedup. Browsers
- * hitting /api/market/candles share ONE upstream fetch per 10s window — the
+ * hitting /api/market/candles share ONE upstream fetch per 4s window — the
  * public feed distributes from here instead of hammering the exchange.
  * Single-instance assumption, same as the rate limiter.
  */
 
-const TTL_MS = 10_000;
+const TTL_MS = 4_000;
 
 interface Entry {
   data: unknown;

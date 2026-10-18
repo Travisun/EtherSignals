@@ -11,7 +11,7 @@
  *    continuation probability, graded ✓/✗ against the realized move
  *  - right rail: per-window channel prices (high & low with % and cash
  *    gap), near-break rows highlighted, plain-language states with legend
- * Data: 10s candle polling (server memory cache + 1 req/10s/IP), 20s feed.
+ * Data: 4s candle polling (server memory cache + 15 req/min/IP), 4s feed.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -167,14 +167,14 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
       }
     };
     void load();
-    const timer = setInterval(load, 10_000);
+    const timer = setInterval(load, 4_000);
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
   }, [tf]);
 
-  // signals: our own DB via the existing feed API (20s cadence)
+  // signals: our own DB via the existing feed API (4s cadence)
   useEffect(() => {
     const load = () =>
       fetch("/api/signals?limit=50")
@@ -183,7 +183,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
           if (Array.isArray(j.signals)) setSignals(j.signals as SignalDTO[]);
         })
         .catch(() => undefined);
-    const timer = setInterval(load, 20_000);
+    const timer = setInterval(load, 4_000);
     return () => clearInterval(timer);
   }, []);
 
@@ -607,7 +607,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
         {error
           ? `⚠ ${error}`
           : updatedAt
-            ? `refreshed ${new Date(updatedAt).toLocaleTimeString()} · candles 10s · signals 20s · `
+            ? `refreshed ${new Date(updatedAt).toLocaleTimeString()} · candles 4s · signals 4s · `
             : "loading…"}
       </p>
 
