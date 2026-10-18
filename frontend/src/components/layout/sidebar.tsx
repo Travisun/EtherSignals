@@ -60,15 +60,15 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-border bg-background/95 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-md transition-[width] duration-200 lg:flex",
+        "fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-border bg-background/95 pt-[max(env(safe-area-inset-top),0.75rem)] pb-[max(env(safe-area-inset-bottom),0.75rem)] backdrop-blur-md transition-[width] duration-200 lg:flex",
         expanded ? "w-56" : "w-[3.75rem]",
       )}
     >
       {/* brand + collapse toggle */}
       <div
         className={cn(
-          "flex h-16 shrink-0 items-center border-b border-border",
-          expanded ? "px-3" : "flex-col justify-center gap-2 px-2",
+          "flex min-h-16 shrink-0 items-center border-b border-border",
+          expanded ? "h-16 px-3" : "flex-col justify-center gap-2 px-2 py-1",
         )}
       >
         {expanded ? (

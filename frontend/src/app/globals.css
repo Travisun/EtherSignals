@@ -126,9 +126,10 @@ body {
 
 @media (min-width: 1024px) {
   /* deterministic left padding for the content shell (belt-and-braces with
-     the Tailwind class on <main>) */
+     the Tailwind class on <main>): rail width + a visible gutter so cards
+     never touch the rail */
   #main {
-    padding-left: var(--sidebar-w);
+    padding-left: calc(var(--sidebar-w) + 1.5rem);
   }
 }
 
