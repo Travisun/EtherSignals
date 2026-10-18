@@ -2,34 +2,35 @@
 
 /**
  * Professional one-glance chart dashboard, benchmarked on institutional
- * research notes:
- *  - full 16-tier window selector (2m/2h/8h/2d aggregated server-side)
- *  - EMA20/EMA50 overlays + the model's key levels as horizontal lines
- *  - every signal push marked with its PREDICTED direction arrow and
- *    continuation probability, then graded against the realized price move
- *    (✓ hit / ✗ miss) — prediction-vs-actual accountability on the chart
- *  - consensus strip + forecast hit-rate header
- *  - right rail in plain language with a legend (no cryptic abbreviations)
+ * trading terminals:
+ *  - full-width layout, viewport-scaled chart, default zoom = the most
+ *    recent ~80 candles in readable detail, auto-follow as new bars stream
+ *  - overlays: EMA20/50, Bollinger(20,2σ), rolling VWAP, and the model's
+ *    key levels (R/S/PP/Donchian) as horizontal lines — all toggleable
+ *  - every signal push marked with its predicted direction arrow and
+ *    continuation probability, graded ✓/✗ against the realized move
+ *  - right rail: per-window channel prices (high & low with % and cash
+ *    gap), near-break rows highlighted, plain-language states with legend
  * Data: 10s candle polling (server memory cache + 1 req/10s/IP), 20s feed.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ColorType,
+  CrosshairMode,
   createChart,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type SeriesMarker,
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { SignalDTO } from "@/lib/signals/dto";
-import { NhnlLadder } from "@/components/signals/nhnl-ladder";
 import { RegimeBadge, TrendBoard, formatScore, regimeMeta } from "@/components/signals/regime";
 import { formatPrice } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
-/** full ladder, display order — 2m/2h/8h/2d arrive pre-aggregated */
 const TFS = [
   "1m", "2m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h",
   "12h", "1d", "2d", "3d", "1w", "1M",
@@ -57,7 +58,6 @@ const REGIME_HEX: Record<string, string> = {
   strong_down: "#dc2626",
 };
 
-/** exponential moving average (client-side overlay computation) */
 function ema(values: number[], period: number): (number | null)[] {
   const k = 2 / (period + 1);
   const out: (number | null)[] = [];
@@ -67,14 +67,49 @@ function ema(values: number[], period: number): (number | null)[] {
       out.push(null);
       continue;
     }
-    if (prev == null) {
-      prev = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
-    } else {
-      prev = values[i] * k + prev * (1 - k);
-    }
+    if (prev == null) prev = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    else prev = values[i] * k + prev * (1 - k);
     out.push(prev);
   }
   return out;
+}
+
+function sma(values: number[], period: number): (number | null)[] {
+  const out: (number | null)[] = [];
+  for (let i = 0; i < values.length; i++) {
+    if (i < period - 1) {
+      out.push(null);
+      continue;
+    }
+    out.push(values.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period);
+  }
+  return out;
+}
+
+function rollingStd(values: number[], period: number): (number | null)[] {
+  const out: (number | null)[] = [];
+  for (let i = 0; i < values.length; i++) {
+    if (i < period - 1) {
+      out.push(null);
+      continue;
+    }
+    const win = values.slice(i - period + 1, i + 1);
+    const mean = win.reduce((a, b) => a + b, 0) / period;
+    out.push(Math.sqrt(win.reduce((a, b) => a + (b - mean) ** 2, 0) / period));
+  }
+  return out;
+}
+
+/** rolling VWAP over the loaded window (typical price × volume) */
+function rollingVwap(candles: Candle[]): (number | null)[] {
+  let pv = 0;
+  let vol = 0;
+  return candles.map((c) => {
+    const tp = (c.high + c.low + c.close) / 3;
+    pv += tp * c.volume;
+    vol += c.volume;
+    return vol > 0 ? pv / vol : null;
+  });
 }
 
 interface GradedMarker {
@@ -88,8 +123,8 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
   const [signals, setSignals] = useState<SignalDTO[]>(initialSignals);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
-  const [showEma, setShowEma] = useState(true);
-  const [showLevels, setShowLevels] = useState(true);
+  const [overlays, setOverlays] = useState({ ema: true, boll: false, vwap: true, levels: true });
+  const [follow, setFollow] = useState(true);
 
   const chartDivRef = useRef<HTMLDivElement | null>(null);
   const apiRef = useRef<{
@@ -98,9 +133,15 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
     volume: ISeriesApi<"Histogram">;
     ema20: ISeriesApi<"Line">;
     ema50: ISeriesApi<"Line">;
+    bollU: ISeriesApi<"Line">;
+    bollL: ISeriesApi<"Line">;
+    vwap: ISeriesApi<"Line">;
   } | null>(null);
   const fittedForTf = useRef<string | null>(null);
-  const priceLinesRef = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[]>([]);
+  const priceLinesRef = useRef<IPriceLine[]>([]);
+  const followRef = useRef(true);
+  followRef.current = follow;
+  const candlesCountRef = useRef(0);
 
   const latest = signals[0] ?? null;
 
@@ -159,10 +200,18 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
       },
       grid: {
         vertLines: { color: "rgba(120,120,128,0.10)" },
-        horzLines: { color: "rgba(120,120,128,0.10)" },
+        horzLines: { color: "rgba(120,120,128,0.14)" },
       },
-      timeScale: { timeVisible: true, secondsVisible: false },
-      rightPriceScale: { borderVisible: false },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: { style: 3, labelBackgroundColor: "#3f3f46" },
+        horzLine: { style: 3, labelBackgroundColor: "#3f3f46" },
+      },
+      timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 4 },
+      rightPriceScale: {
+        borderVisible: false,
+        scaleMargins: { top: 0.08, bottom: 0.22 },
+      },
     });
     const series = chart.addCandlestickSeries({
       upColor: "#16a34a",
@@ -176,21 +225,30 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
       priceScaleId: "vol",
     });
     chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-    const ema20 = chart.addLineSeries({
-      color: "#f59e0b",
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      title: "EMA20",
+    const mkLine = (color: string, title: string) =>
+      chart.addLineSeries({
+        color,
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: true,
+        title,
+        crosshairMarkerVisible: false,
+      });
+    apiRef.current = {
+      chart,
+      series,
+      volume,
+      ema20: mkLine("#f59e0b", "EMA20"),
+      ema50: mkLine("#3b82f6", "EMA50"),
+      bollU: mkLine("#a78bfa", "BOLL+"),
+      bollL: mkLine("#a78bfa", "BOLL−"),
+      vwap: mkLine("#e879f9", "VWAP"),
+    };
+    // auto-follow detection: user pans away from the live edge → unpin
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (!range) return;
+      setFollow(range.to >= candlesCountRef.current - 2);
     });
-    const ema50 = chart.addLineSeries({
-      color: "#3b82f6",
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      title: "EMA50",
-    });
-    apiRef.current = { chart, series, volume, ema20, ema50 };
     return () => {
       chart.remove();
       apiRef.current = null;
@@ -198,7 +256,11 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
     };
   }, []);
 
-  // candle data → series (fit zoom once per timeframe switch)
+  useEffect(() => {
+    candlesCountRef.current = candles.length;
+  }, [candles]);
+
+  // candle data → series; default zoom = last ~80 candles; auto-follow edge
   useEffect(() => {
     const api = apiRef.current;
     if (!api || candles.length === 0) return;
@@ -228,20 +290,40 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
       );
     putLine(api.ema20, ema(closes, 20));
     putLine(api.ema50, ema(closes, 50));
-    api.ema20.applyOptions({ visible: showEma });
-    api.ema50.applyOptions({ visible: showEma });
+    const mid = sma(closes, 20);
+    const dev = rollingStd(closes, 20);
+    putLine(
+      api.bollU,
+      mid.map((m, i) => (m != null && dev[i] != null ? m + 2 * (dev[i] as number) : null)),
+    );
+    putLine(
+      api.bollL,
+      mid.map((m, i) => (m != null && dev[i] != null ? m - 2 * (dev[i] as number) : null)),
+    );
+    putLine(api.vwap, rollingVwap(candles));
+    api.ema20.applyOptions({ visible: overlays.ema });
+    api.ema50.applyOptions({ visible: overlays.ema });
+    api.bollU.applyOptions({ visible: overlays.boll });
+    api.bollL.applyOptions({ visible: overlays.boll });
+    api.vwap.applyOptions({ visible: overlays.vwap });
+
     if (fittedForTf.current !== tf) {
-      api.chart.timeScale().fitContent();
+      // default zoom: the most recent ~80 candles in readable detail
+      const from = Math.max(0, candles.length - 80);
+      api.chart.timeScale().setVisibleLogicalRange({ from, to: candles.length + 4 });
       fittedForTf.current = tf;
+      setFollow(true);
+    } else if (followRef.current) {
+      // pinned to the live edge — new bars scroll in from the right
+      api.chart.timeScale().scrollToRealTime();
     }
-  }, [candles, tf, showEma]);
+  }, [candles, tf, overlays]);
 
   // ── graded markers: predicted arrow + continuation % + realized ✓/✗ ──
   const graded = useMemo<GradedMarker[]>(() => {
     if (candles.length === 0) return [];
     const step = TF_SECONDS[tf] ?? 300;
     const closeAtOrBefore = (tSec: number): number | null => {
-      // binary search the last candle closing at/before tSec
       let lo = 0;
       let hi = candles.length - 1;
       if (tSec < candles[0].time) return null;
@@ -268,8 +350,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
       const probTxt = s.board?.find((b) => b.tf === s.timeframe)?.prob;
       const prob = probTxt != null ? `${Math.round(probTxt * 100)}%` : "";
       const entry = closeAtOrBefore(Math.floor(new Date(s.pushedAt).getTime() / 1000));
-      const horizonSec = 3 * sigStep;
-      const exit = closeAtOrBefore(Math.floor(new Date(s.pushedAt).getTime() / 1000) + horizonSec);
+      const exit = closeAtOrBefore(Math.floor(new Date(s.pushedAt).getTime() / 1000) + 3 * sigStep);
       let outcome: GradedMarker["outcome"] = "pending";
       let outcomeGlyph = "";
       if (entry != null && exit != null) {
@@ -310,7 +391,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
       }
     }
     priceLinesRef.current = [];
-    if (!showLevels || !latest?.levels) return;
+    if (!overlays.levels || !latest?.levels) return;
     const add = (price: number | undefined, color: string, title: string, style: 1 | 2 | 3 | 4) => {
       if (price == null || !Number.isFinite(price)) return;
       priceLinesRef.current.push(
@@ -318,7 +399,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
           price,
           color,
           lineWidth: 1,
-          lineStyle: style, // 1 dashed, 2 dotted, 3 sparse-dotted, 4 solid
+          lineStyle: style,
           axisLabelVisible: true,
           title,
         }),
@@ -330,7 +411,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
     add(lv.pivot ? Number(lv.pivot) : undefined, "#8b8f98", "PP", 3);
     add(lv.donchianHigh ? Number(lv.donchianHigh) : undefined, "#64748b", "D20 H", 3);
     add(lv.donchianLow ? Number(lv.donchianLow) : undefined, "#64748b", "D20 L", 3);
-  }, [latest, showLevels]);
+  }, [latest, overlays.levels]);
 
   // forecast accountability + consensus strip
   const stats = useMemo(() => {
@@ -355,8 +436,44 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
   const prev = candles.at(-2)?.close ?? price ?? 0;
   const up = price != null && price >= prev;
 
+  // per-window channel analysis: distances in % and cash, near-break flags
+  const windowRows = useMemo(() => {
+    if (!latest?.nhnl || !price) return [];
+    return latest.nhnl.rows.map((r) => {
+      const high = r.barHigh != null ? Number(r.barHigh) : null;
+      const low = r.barLow != null ? Number(r.barLow) : null;
+      const distHigh = r.distHighPct;
+      const distLow = r.distLowPct;
+      const cashHigh = distHigh != null && price ? (price * distHigh) / 100 : null;
+      const cashLow = distLow != null && price ? (price * distLow) / 100 : null;
+      const nearHigh = !r.nh && distHigh != null && distHigh <= 0.3;
+      const nearLow = !r.nl && distLow != null && distLow <= 0.3;
+      return { r, high, low, distHigh, distLow, cashHigh, cashLow, nearHigh, nearLow };
+    });
+  }, [latest, price]);
+
+  const closestBreak = useMemo(() => {
+    let best: { tf: string; side: "high" | "low"; dist: number } | null = null;
+    for (const w of windowRows) {
+      if (!w.r.nh && w.distHigh != null && (!best || w.distHigh < best.dist))
+        best = { tf: w.r.tf, side: "high", dist: w.distHigh };
+      if (!w.r.nl && w.distLow != null && (!best || w.distLow < best.dist))
+        best = { tf: w.r.tf, side: "low", dist: w.distLow };
+    }
+    return best;
+  }, [windowRows]);
+
+  const numTone = (dist: number | null): string =>
+    dist == null
+      ? "text-muted-foreground"
+      : dist <= 0.3
+        ? "font-bold text-amber-500"
+        : dist <= 1
+          ? "font-semibold text-foreground"
+          : "text-muted-foreground";
+
   return (
-    <div className="mx-auto w-full max-w-7xl px-3 py-4 md:px-5">
+    <div className="w-full px-3 py-4 md:px-5">
       {/* header: price + regime + forecast accountability */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
@@ -405,7 +522,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
         </div>
       </div>
 
-      {/* consensus + overlay toggles */}
+      {/* consensus + overlays + follow */}
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
         {latest ? (
           <span className="rounded-md bg-muted/60 px-2 py-1">
@@ -425,36 +542,55 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
             >
               {stats.lean}
             </span>
-            {latest.nhnl ? (
-              <span className="ml-2 text-muted-foreground">
-                {latest.nhnl.rows.filter((r) => r.nh || r.brkUp || r.donUp).length} windows at highs ·{" "}
-                {latest.nhnl.rows.filter((r) => r.nl || r.brkDown || r.donDown).length} at lows
+            {closestBreak ? (
+              <span
+                className={cn(
+                  "ml-2 font-semibold",
+                  closestBreak.dist <= 0.3 ? "text-amber-500" : "text-muted-foreground",
+                )}
+                title="The window whose high/low the price is closest to breaking right now"
+              >
+                ⚡ nearest break: {closestBreak.tf} {closestBreak.side} {closestBreak.dist.toFixed(2)}%
               </span>
             ) : null}
           </span>
         ) : null}
-        <span className="ml-auto flex items-center gap-1.5 text-muted-foreground">
+        <span className="ml-auto flex flex-wrap items-center gap-1.5 text-muted-foreground">
           <span className="text-[10px] uppercase tracking-wider">overlays</span>
-          <button
-            type="button"
-            onClick={() => setShowEma((v) => !v)}
-            className={cn(
-              "rounded px-1.5 py-0.5 text-[10px] font-semibold",
-              showEma ? "bg-amber-500/15 text-amber-500" : "bg-muted",
-            )}
-          >
-            EMA 20/50
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowLevels((v) => !v)}
-            className={cn(
-              "rounded px-1.5 py-0.5 text-[10px] font-semibold",
-              showLevels ? "bg-sky-500/15 text-sky-500" : "bg-muted",
-            )}
-          >
-            Key levels
-          </button>
+          {(
+            [
+              ["ema", "EMA 20/50"],
+              ["boll", "BOLL 20,2σ"],
+              ["vwap", "VWAP"],
+              ["levels", "Key levels"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setOverlays((o) => ({ ...o, [key]: !o[key] }))}
+              className={cn(
+                "rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors",
+                overlays[key]
+                  ? "bg-sky-500/15 text-sky-500"
+                  : "bg-muted text-muted-foreground hover:bg-muted/70",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+          {!follow ? (
+            <button
+              type="button"
+              onClick={() => {
+                setFollow(true);
+                apiRef.current?.chart.timeScale().scrollToRealTime();
+              }}
+              className="rounded bg-brand-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand-500"
+            >
+              → live
+            </button>
+          ) : null}
         </span>
       </div>
       <p className="mt-1 text-[10px] text-muted-foreground">
@@ -465,41 +601,158 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
             : "loading…"}
         <span className="hidden md:inline">
           arrows = model prediction at push time (↑/↓ + continuation %), ✓/✗ = actual outcome vs the
-          next 3 candles · dashed lines = model key levels (R/S/PP/Donchian)
+          next 3 candles · dashed lines = model key levels
         </span>
       </p>
 
-      <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-        {/* chart — height scales with the viewport */}
+      <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        {/* chart — full width on PC, height scales with the viewport */}
         <div className="min-w-0">
-          <div ref={chartDivRef} className="h-[clamp(320px,56vh,680px)] w-full" />
-          {latest ? (
-            <div className="mt-2 rounded-lg bg-muted/40 p-2.5">
-              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                Trend board · five timeframes (continuation % of the triggering model)
-              </p>
-              <div className="mt-1.5">
-                <TrendBoard board={latest.board} highlightTf={latest.timeframe} />
+          <div ref={chartDivRef} className="h-[clamp(360px,62vh,780px)] w-full" />
+          <div className="mt-2 grid gap-2 md:grid-cols-2">
+            {latest ? (
+              <div className="rounded-lg bg-muted/40 p-2.5">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Trend board · five timeframes
+                </p>
+                <div className="mt-1.5">
+                  <TrendBoard board={latest.board} highlightTf={latest.timeframe} />
+                </div>
               </div>
+            ) : null}
+            <div className="rounded-lg bg-muted/40 p-2.5">
+              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                Marker legend
+              </p>
+              <ul className="mt-1.5 space-y-0.5 text-[10px] leading-relaxed text-muted-foreground">
+                <li>
+                  <span className="font-semibold text-success">↑ arrow</span> /{" "}
+                  <span className="font-semibold text-destructive">↓ arrow</span> — model prediction
+                  at push time, colored by trend regime
+                </li>
+                <li>
+                  <span className="font-semibold">percentage</span> — continuation probability of the
+                  triggering timeframe
+                </li>
+                <li>
+                  <span className="font-semibold text-success">✓</span> /{" "}
+                  <span className="font-semibold text-destructive">✗</span> /{" "}
+                  <span className="font-semibold">≈</span> — realized outcome vs the next 3
+                  signal-candles (≥0.1% decisive)
+                </li>
+                <li>
+                  <span className="font-semibold">dashed lines</span> — R/S/PP + 20-day Donchian from
+                  the model; colored solid lines = EMA/BOLL/VWAP overlays
+                </li>
+              </ul>
             </div>
-          ) : null}
+          </div>
         </div>
 
-        {/* right rail — plain language */}
+        {/* right rail — full channel prices per window */}
         <div className="space-y-4">
           {latest ? (
             <>
               <section className="rounded-lg border border-border bg-card p-3">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Is the price making new highs or lows? (per window)
-                </p>
-                {latest.nhnl ? (
-                  <NhnlLadder nhnl={latest.nhnl} className="mt-1.5 [&>p:first-child]:hidden" />
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Window channels — where is a break near?
+                  </p>
+                  {closestBreak && closestBreak.dist <= 0.3 ? (
+                    <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-500">
+                      ⚡ {closestBreak.tf} {closestBreak.side} {closestBreak.dist.toFixed(2)}% away
+                    </span>
+                  ) : null}
+                </div>
+                {windowRows.length ? (
+                  <table className="mt-1.5 w-full text-[11px]">
+                    <thead>
+                      <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        <th className="py-1 text-left font-semibold">Window</th>
+                        <th className="py-1 text-right font-semibold">High / gap</th>
+                        <th className="py-1 text-right font-semibold">Low / gap</th>
+                      </tr>
+                    </thead>
+                    <tbody className="tnum">
+                      {windowRows.map((w) => (
+                        <tr
+                          key={w.r.tf}
+                          className={cn(
+                            "border-t border-border/50",
+                            (w.nearHigh || w.nearLow) && "bg-amber-500/10",
+                          )}
+                        >
+                          <td className="py-1.5 text-left">
+                            <span className="font-semibold">{w.r.tf}</span>
+                            {w.r.nh ? (
+                              <span className="ml-1 rounded bg-success/15 px-1 py-px text-[9px] font-bold text-success">
+                                at high
+                              </span>
+                            ) : w.r.nl ? (
+                              <span className="ml-1 rounded bg-destructive/15 px-1 py-px text-[9px] font-bold text-destructive">
+                                at low
+                              </span>
+                            ) : w.nearHigh || w.nearLow ? (
+                              <span className="ml-1 rounded bg-amber-500/20 px-1 py-px text-[9px] font-bold text-amber-500">
+                                ≈ break
+                              </span>
+                            ) : null}
+                          </td>
+                          {/* high side: what the price must climb to break (bullish target) */}
+                          <td className="py-1.5 text-right">
+                            {w.r.nh ? (
+                              <span className="font-bold text-success">broken ✓</span>
+                            ) : (
+                              <>
+                                <span className={cn("font-semibold", numTone(w.distHigh))}>
+                                  {formatPrice(w.high)}
+                                </span>
+                                <span className={cn("ml-1 text-[10px]", numTone(w.distHigh))}>
+                                  +{w.distHigh?.toFixed(2)}%
+                                </span>
+                                {w.cashHigh != null && w.distHigh != null && w.distHigh <= 1 ? (
+                                  <span className="ml-1 text-[10px] text-muted-foreground">
+                                    (${w.cashHigh.toFixed(w.cashHigh < 10 ? 2 : 0)})
+                                  </span>
+                                ) : null}
+                              </>
+                            )}
+                          </td>
+                          {/* low side: what the price must fall to break (bearish target) */}
+                          <td className="py-1.5 text-right">
+                            {w.r.nl ? (
+                              <span className="font-bold text-destructive">broken ✓</span>
+                            ) : (
+                              <>
+                                <span className={cn("font-semibold", numTone(w.distLow))}>
+                                  {formatPrice(w.low)}
+                                </span>
+                                <span className={cn("ml-1 text-[10px]", numTone(w.distLow))}>
+                                  -{w.distLow?.toFixed(2)}%
+                                </span>
+                                {w.cashLow != null && w.distLow != null && w.distLow <= 1 ? (
+                                  <span className="ml-1 text-[10px] text-muted-foreground">
+                                    (${w.cashLow.toFixed(w.cashLow < 10 ? 2 : 0)})
+                                  </span>
+                                ) : null}
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 ) : (
                   <p className="mt-1.5 text-xs text-muted-foreground">
                     ladder warming up — windows not ready on the producer yet
                   </p>
                 )}
+                <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
+                  High / Low = the running extreme of each forming window. Gap = % and cash the
+                  price still needs to break it.{" "}
+                  <span className="font-semibold text-amber-500">amber rows</span> are within 0.30%
+                  of a break. “at high / at low” = the price IS that extreme right now.
+                </p>
               </section>
 
               <section className="rounded-lg border border-border bg-card p-3">
@@ -509,11 +762,15 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
                 <dl className="tnum mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Resistance</dt>
-                    <dd className="font-semibold">{formatPrice(latest.levels?.resistance ? Number(latest.levels.resistance) : null)}</dd>
+                    <dd className="font-semibold text-destructive">
+                      {formatPrice(latest.levels?.resistance ? Number(latest.levels.resistance) : null)}
+                    </dd>
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Support</dt>
-                    <dd className="font-semibold">{formatPrice(latest.levels?.support ? Number(latest.levels.support) : null)}</dd>
+                    <dd className="font-semibold text-success">
+                      {formatPrice(latest.levels?.support ? Number(latest.levels.support) : null)}
+                    </dd>
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Pivot</dt>
@@ -537,13 +794,16 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
                   Recent pushes (newest first)
                 </p>
                 <ul className="mt-1.5 space-y-1">
-                  {signals.slice(0, 6).map((s) => (
+                  {signals.slice(0, 8).map((s) => (
                     <li key={s.id} className="flex items-center justify-between gap-2 text-xs">
                       <span className="flex items-center gap-1.5">
                         <span className="rounded bg-muted px-1 py-0.5 text-[10px] font-bold text-muted-foreground">
                           {s.timeframe}
                         </span>
                         <RegimeBadge regime={s.regime} />
+                        <span className={cn("tnum", regimeMeta(s.regime).text)}>
+                          {formatScore(s.score)}
+                        </span>
                       </span>
                       <span className="tnum text-muted-foreground">
                         {new Date(s.pushedAt).toLocaleTimeString()}
@@ -555,8 +815,8 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
             </>
           ) : (
             <p className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
-              no signals stored yet — the ladder and board appear after the
-              first webhook push arrives
+              no signals stored yet — the ladder and board appear after the first webhook push
+              arrives
             </p>
           )}
         </div>
