@@ -211,10 +211,29 @@ export async function getFeed(options: {
       })
     : null;
 
-  // Fetch the latest window (at most 100 rows) and slice in memory; index-friendly.
+  // Fetch the latest window (at most 100 rows) and slice in memory;
+  // index-friendly. `raw` (up to 16 KB/row of audit JSON) is deliberately NOT
+  // selected — the wire DTO never exposes it and dragging it out of Postgres
+  // for every poll was the heaviest part of the feed query.
   const rows = await db.signal.findMany({
     orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
     take: limit,
+    select: {
+      id: true,
+      type: true,
+      symbol: true,
+      marketType: true,
+      price: true,
+      timeframe: true,
+      regime: true,
+      score: true,
+      message: true,
+      board: true,
+      levels: true,
+      nhnl: true,
+      pushedAt: true,
+      receivedAt: true,
+    },
   });
 
   let sliced = rows;
@@ -228,7 +247,8 @@ export async function getFeed(options: {
   }
 
   return {
-    signals: sliced.map(serializeSignal),
+    // raw-less rows are structurally compatible with Signal for DTO purposes
+    signals: sliced.map((r) => serializeSignal(r as Signal)),
     hasMore: rows.length === limit,
     lastSignalAt: rows[0]?.receivedAt ?? null,
   };
