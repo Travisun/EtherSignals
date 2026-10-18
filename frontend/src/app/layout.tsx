@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "next-themes";
 import { Header } from "@/components/layout/header";
+import { Sidebar } from "@/components/layout/sidebar";
 import { MobileTabBar } from "@/components/layout/mobile-tab-bar";
 import { Footer } from "@/components/layout/footer";
 import { ConsentBanner } from "@/components/consent/consent-banner";
@@ -96,13 +97,16 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <Header />
+          <Sidebar />
           <main
             id="main"
-            className="container-page w-full flex-1 pb-24 pt-[calc(5rem+env(safe-area-inset-top))] sm:pt-[calc(6rem+env(safe-area-inset-top))] md:pb-8"
+            className="w-full flex-1 px-3 pb-24 pt-[calc(4rem+env(safe-area-inset-top))] sm:px-5 md:pb-8 lg:pb-10 lg:pl-60 lg:pr-6 lg:pt-6 xl:px-8"
           >
             {children}
           </main>
-          <Footer />
+          <div className="lg:pl-56">
+            <Footer />
+          </div>
           <Toaster
             position="bottom-center"
             richColors

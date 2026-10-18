@@ -9,7 +9,7 @@ export async function Footer() {
   const year = new Date().getFullYear();
   return (
     <footer className="border-t border-border bg-card/40 pb-16 md:pb-0">
-      <div className="container-page grid grid-cols-2 gap-6 py-8 sm:grid-cols-[1.4fr_1fr_1fr] sm:gap-8 sm:py-10">
+      <div className="grid grid-cols-2 gap-6 px-4 py-8 sm:grid-cols-[1.4fr_1fr_1fr] sm:gap-8 sm:px-6 sm:py-10 xl:px-8">
         <div className="col-span-2 space-y-3 sm:col-span-1">
           <div className="flex items-center gap-2">
             <Logo size={26} />

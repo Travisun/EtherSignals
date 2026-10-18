@@ -12,9 +12,5 @@ export const dynamic = "force-dynamic";
 
 export default async function ChartPage() {
   const { signals } = await getFeed({ limit: 50 });
-  return (
-    <main className="min-h-dvh">
-      <ChartDashboard initialSignals={signals} />
-    </main>
-  );
+  return <ChartDashboard initialSignals={signals} />;
 }

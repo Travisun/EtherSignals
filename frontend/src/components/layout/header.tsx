@@ -30,7 +30,7 @@ export function Header() {
   }, []);
 
   return (
-    <header className="fixed inset-x-0 top-0 z-40 border-b border-border bg-background/85 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+    <header className="fixed inset-x-0 top-0 z-40 border-b border-border bg-background/85 pt-[env(safe-area-inset-top)] backdrop-blur-md lg:hidden">
       <div className="container-page flex h-14 items-center justify-between gap-3 md:h-16">
         <Link
           href="/"

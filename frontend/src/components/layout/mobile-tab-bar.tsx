@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, Send } from "lucide-react";
+import { ChartLine, Home, Send } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
@@ -22,7 +22,7 @@ export function MobileTabBar() {
       aria-label="App navigation"
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/75 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl backdrop-saturate-150 md:hidden"
     >
-      <div className="grid h-14 grid-cols-4">
+      <div className="grid h-14 grid-cols-5">
         <button
           onClick={() => {
             trackEvent("tab.feed");
@@ -40,6 +40,17 @@ export function MobileTabBar() {
           <Home className="size-5" />
           Feed
         </button>
+
+        <Link
+          href="/chart"
+          onClick={() => trackEvent("tab.chart")}
+          className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
+            pathname.startsWith("/chart") ? "text-primary" : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <ChartLine className="size-5" />
+          Chart
+        </Link>
 
         <Link
           href="/guide"
