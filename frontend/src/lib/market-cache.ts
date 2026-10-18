@@ -8,6 +8,15 @@
 
 const TTL_MS = 4_000;
 
+export interface ForecastBar {
+  time: number;
+  dir: 1 | -1 | 0;
+  score: number;
+  prob: number | null;
+  outcome: "hit" | "miss" | "flat" | "pending";
+  realizedPct: number | null;
+}
+
 interface Entry {
   data: unknown;
   expiry: number;
@@ -43,6 +52,9 @@ export async function getCached<T>(key: string, loader: () => Promise<T>): Promi
 }
 
 // ─── Bitget public candles (read-only market data, no auth) ──────────────────
+
+import { computeForecasts } from "./model/forecasts";
+import type { ModelCandle } from "./model/core";
 
 export interface MarketCandle {
   /** candle open time, unix SECONDS */
@@ -143,4 +155,50 @@ export async function fetchCandles(tf: string, limit: number): Promise<MarketCan
   if (!synth) return fetchNative(tf, limit);
   const base = await fetchNative(synth.base, Math.min(limit * (synth.seconds / (BASE_SECONDS[synth.base] ?? 1)), UPSTREAM_LIMIT));
   return aggregate(base, synth.seconds).slice(-limit);
+}
+
+/**
+ * Full market payload for the chart: candles + the model's per-candle
+ * forecast, computed SERVER-SIDE (the replay algorithm never ships to
+ * browsers). Extra warmup bars feed the indicator suite before slicing.
+ */
+export async function fetchMarketData(
+  tf: string,
+  limit: number,
+): Promise<{ candles: MarketCandle[]; forecasts: ForecastBar[] }> {
+  const warmup = 80;
+  const candles = await fetchCandles(tf, Math.min(limit + warmup, UPSTREAM_LIMIT));
+  const modelCandles: ModelCandle[] = candles.map((c) => ({ ...c, baseVol: c.volume }));
+  const bars = computeForecasts(modelCandles, tf);
+  const forecasts: ForecastBar[] = bars.map((b, i) => {
+    const base: ForecastBar = {
+      time: candles[i].time,
+      dir: b?.dir ?? 0,
+      score: b?.score ?? 0,
+      prob: b?.prob ?? null,
+      outcome: "pending",
+      realizedPct: null,
+    };
+    if (!b || b.dir === 0) return base;
+    const entry = candles[i].close;
+    const exitIdx = Math.min(i + 3, candles.length - 1);
+    if (exitIdx <= i) return base; // no realized data yet — pending
+    const realizedPct = ((candles[exitIdx].close - entry) / entry) * 100;
+    if (Math.abs(realizedPct) < 0.1) {
+      base.outcome = "flat";
+      base.realizedPct = realizedPct;
+    } else if ((realizedPct > 0 && b.dir > 0) || (realizedPct < 0 && b.dir < 0)) {
+      base.outcome = "hit";
+      base.realizedPct = realizedPct;
+    } else {
+      base.outcome = "miss";
+      base.realizedPct = realizedPct;
+    }
+    return base;
+  });
+  const start = Math.max(0, candles.length - limit);
+  return {
+    candles: candles.slice(start),
+    forecasts: forecasts.slice(start),
+  };
 }

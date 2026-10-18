@@ -26,7 +26,6 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { SignalDTO } from "@/lib/signals/dto";
-import { computeForecasts } from "@/lib/model/forecasts";
 import { RegimeBadge, TrendBoard, formatScore, regimeMeta } from "@/components/signals/regime";
 import { formatPrice } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -131,6 +130,9 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
   const [overlays, setOverlays] = useState({ ema: true, boll: false, vwap: true, levels: true });
   const [follow, setFollow] = useState(true);
   const [cursorIdx, setCursorIdx] = useState<number | null>(null);
+  const [forecasts, setForecasts] = useState<
+    { time: number; dir: 1 | -1 | 0; score: number; prob: number | null; outcome: string; realizedPct: number | null }[]
+  >([]);
   const [overlayItems, setOverlayItems] = useState<
     { x: number; dir: 1 | -1; prob: number | null; outcome: string }[]
   >([]);
@@ -169,6 +171,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
         if (!j.ok && j?.error) throw new Error(j.error?.message ?? "failed");
         if (!cancelled) {
           setCandles(j.candles as Candle[]);
+          setForecasts((j.forecasts ?? []) as { time: number; dir: 1 | -1 | 0; score: number; prob: number | null; outcome: string; realizedPct: number | null }[]);
           setError(null);
           setUpdatedAt(Date.now());
         }
@@ -218,23 +221,6 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
       vwap: rollingVwap(candles),
     };
   }, [candles]);
-
-  // per-candle model forecast (client-side replay of the producer's model)
-  const forecasts = useMemo(
-    () =>
-      computeForecasts(
-        candles.map((c) => ({
-          time: c.time,
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close,
-          baseVol: c.volume,
-        })),
-        tf,
-      ),
-    [candles, tf],
-  );
 
   // push signals bucketed onto chart-candle times
   const signalMap = useMemo(() => {
@@ -513,16 +499,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
         if (!f || f.dir === 0) continue;
         const x = ts.timeToCoordinate(candles[i]?.time as UTCTimestamp);
         if (x == null) continue;
-        const entry = closeAtOrBefore(candles[i]?.time ?? 0);
-        const exit = closeAtOrBefore((candles[i]?.time ?? 0) + 3 * (TF_SECONDS[tf] ?? 300));
-        let outcome = "⏳";
-        if (entry != null && exit != null) {
-          const movePct = ((exit - entry) / entry) * 100;
-          if (Math.abs(movePct) < 0.1) outcome = "≈";
-          else if ((movePct > 0 && f.dir > 0) || (movePct < 0 && f.dir < 0)) outcome = "✓";
-          else outcome = "✗";
-        }
-        items.push({ x, dir: f.dir as 1 | -1, prob: f.prob, outcome });
+        items.push({ x, dir: f.dir as 1 | -1, prob: f.prob, outcome: f.outcome });
       }
       setOverlayItems(items);
     };
@@ -535,7 +512,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
       ts.unsubscribeVisibleLogicalRangeChange(handler);
       window.removeEventListener("resize", handler);
     };
-  }, [signals, tf, candles, forecasts, closeAtOrBefore]);
+  }, [signals, tf, candles, forecasts]);
 
   // forecast accountability + consensus strip
   const stats = useMemo(() => {

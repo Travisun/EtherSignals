@@ -2,7 +2,7 @@ import { env } from "@/lib/env";
 import { ERR, jsonOk } from "@/lib/api/respond";
 import { checkIpRateLimit, clientIpFromHeaders } from "@/lib/security/ip";
 import { RateLimitError } from "@/lib/security/rate-limit";
-import { CHART_TFS, fetchCandles, getCached } from "@/lib/market-cache";
+import { CHART_TFS, fetchMarketData, getCached } from "@/lib/market-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -32,8 +32,8 @@ export async function GET(request: Request) {
   }
 
   try {
-    const candles = await getCached(`candles:${tf}:${limit}`, () => fetchCandles(tf, limit));
-    return jsonOk({ candles, tf, serverTime: new Date().toISOString() });
+    const { candles, forecasts } = await getCached(`market:${tf}:${limit}`, () => fetchMarketData(tf, limit));
+    return jsonOk({ candles, forecasts, tf, serverTime: new Date().toISOString() });
   } catch (err) {
     if (err instanceof Error && err.message.startsWith("unsupported")) {
       return ERR.badRequest(err.message);
