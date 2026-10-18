@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { REGIME_LABELS } from "@/lib/constants";
 import type { SignalDTO } from "@/lib/signals/dto";
+import { NhnlLadder } from "@/components/signals/nhnl-ladder";
 import { formatPrice } from "@/lib/utils";
 import { regimeMeta, formatScore } from "@/components/signals/regime";
 import { trackEvent } from "@/lib/analytics";
@@ -371,6 +372,8 @@ export function SignalDrawer({
               </p>
             </div>
           </div>
+
+          {signal.nhnl ? <NhnlLadder nhnl={signal.nhnl} /> : null}
 
           {/* price trend from recent signal prices */}
           <div className="mt-3.5">

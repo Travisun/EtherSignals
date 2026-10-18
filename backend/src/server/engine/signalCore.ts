@@ -95,6 +95,8 @@ export const BASE_WEIGHTS: Record<string, number> = {
   macd: 1.2,
   supertrend: 1.2,
   linreg_drift: 1.1,
+  donchian: 0.9,
+  prev_break: 0.7,
   volume_flow: 0.8,
   rsi: 0.7,
   boll_pctb: 0.6,
@@ -209,6 +211,38 @@ export const VOTES: { name: string; fn: Vote }[] = [
       const d = s.kdj.d[i];
       if (k == null || d == null) return null;
       return clamp((k - d) / 15);
+    },
+  },
+  {
+    // NHNL family — position within the PREVIOUS bar's range: a close above
+    // the prior bar's high (previous-bar break) votes full bullish, below its
+    // low full bearish, inside scales linearly. Pure candle math, so the
+    // optimizer's walk-forward replay grades it like any other component.
+    name: 'prev_break',
+    fn: (s, i) => {
+      if (i < 1) return null;
+      const prev = s.candles[i - 1];
+      const mid = (prev.high + prev.low) / 2;
+      const half = (prev.high - prev.low) / 2;
+      if (!(half > 0)) return null;
+      return clamp((s.closes[i] - mid) / half);
+    },
+  },
+  {
+    // NHNL family — position within the Donchian-20 channel of CLOSED bars:
+    // a fresh 20-bar high votes full bullish, a fresh low full bearish, and
+    // the mid-channel position scales linearly toward the extremes.
+    name: 'donchian',
+    fn: (s, i) => {
+      if (i < 20) return null;
+      let hi = -Infinity;
+      let lo = Infinity;
+      for (let j = i - 20; j < i; j++) {
+        hi = Math.max(hi, s.candles[j].high);
+        lo = Math.min(lo, s.candles[j].low);
+      }
+      if (!(hi > lo)) return null;
+      return clamp(((s.closes[i] - lo) / (hi - lo)) * 2 - 1);
     },
   },
 ];

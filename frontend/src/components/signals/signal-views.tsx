@@ -2,6 +2,7 @@
 
 import { ChevronDown } from "lucide-react";
 import type { LevelsDTO, SignalDTO } from "@/lib/signals/dto";
+import { NhnlLadder } from "@/components/signals/nhnl-ladder";
 import { patternLabel } from "@/lib/constants";
 import { formatClock, formatDateTime, formatPrice } from "@/lib/utils";
 import {
@@ -156,6 +157,7 @@ function SignalDetail({ signal }: { signal: SignalDTO }) {
               candles before levels become available.
             </p>
           )}
+          {signal.nhnl ? <NhnlLadder nhnl={signal.nhnl} /> : null}
         </div>
 
         {signal.message ? (

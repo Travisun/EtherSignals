@@ -132,3 +132,78 @@ describe("toSignalInput", () => {
     expect((input.raw as { truncated: boolean }).truncated).toBe(true);
   });
 });
+
+// ─── nhnl ladder (multi-timeframe new-high/new-low) ──────────────────────────
+
+function nhnlRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    tf: "1h",
+    barTime: 1_792_281_600,
+    barHigh: 2405.0,
+    barLow: 2398.2,
+    nh: true,
+    nl: false,
+    prevHigh: 2404.8,
+    prevLow: 2397.9,
+    brkUp: true,
+    brkDown: false,
+    donHigh: 2412.0,
+    donLow: 2390.5,
+    donUp: false,
+    donDown: false,
+    distHighPct: 0,
+    distLowPct: 0.28,
+    ...overrides,
+  };
+}
+
+describe("signalTrendSchema.nhnl", () => {
+  it("accepts a push with a valid nhnl block", () => {
+    const result = parseSignalTrend(
+      validPush({
+        nhnl: {
+          price: 2405.0,
+          donN: 20,
+          rows: [nhnlRow(), nhnlRow({ tf: "1M", nh: false, brkUp: false, distHighPct: 1.4 })],
+        },
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // case-sensitive ladder tfs: 1m (minute) and 1M (month) both survive
+      expect(result.data.nhnl?.rows.map((r) => r.tf)).toEqual(["1h", "1M"]);
+      expect(result.data.nhnl?.rows[0].nh).toBe(true);
+      expect(result.data.nhnl?.donN).toBe(20);
+    }
+  });
+
+  it("keeps legacy pushes without nhnl valid (backward compatible)", () => {
+    const push = validPush();
+    delete push.nhnl;
+    expect(parseSignalTrend(push).ok).toBe(true);
+    expect(parseSignalTrend(validPush({ nhnl: null })).ok).toBe(true);
+  });
+
+  it("rejects malformed rows (bad tf case rule, missing booleans)", () => {
+    expect(
+      parseSignalTrend(validPush({ nhnl: { donN: 20, rows: [nhnlRow({ tf: "1x" })] } })).ok,
+    ).toBe(false);
+    expect(
+      parseSignalTrend(validPush({ nhnl: { donN: 20, rows: [nhnlRow({ nh: "yes" })] } })).ok,
+    ).toBe(false);
+  });
+});
+
+describe("toSignalInput.nhnl", () => {
+  it("stores the ladder as JSON and DbNull when absent", () => {
+    const withNhnl = parseSignalTrend(validPush({ nhnl: { donN: 20, rows: [nhnlRow()] } }));
+    if (!withNhnl.ok) throw new Error("expected ok");
+    const input = toSignalInput(withNhnl.data, {});
+    expect(Array.isArray(input.nhnl)).toBe(false); // object, not DbNull
+    expect((input.nhnl as { rows: unknown[] }).rows).toHaveLength(1);
+
+    const without = parseSignalTrend(validPush());
+    if (!without.ok) throw new Error("expected ok");
+    expect(toSignalInput(without.data, {}).nhnl).not.toBeNull(); // DbNull sentinel
+  });
+});

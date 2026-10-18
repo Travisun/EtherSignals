@@ -26,6 +26,8 @@ interface RoomState {
  */
 export class LevelsService {
   private rooms = new Map<string, RoomState>();
+  /** ladder windows held for the process lifetime (signal engine's symbol) */
+  private held = new Set<string>();
   private busOff?: () => void;
   private io?: Server;
   started = false;
@@ -63,7 +65,27 @@ export class LevelsService {
       this.releaseLadder(key);
     }
     this.rooms.clear();
+    for (const key of this.held) this.releaseLadder(key);
+    this.held.clear();
     this.started = false;
+  }
+
+  /**
+   * Hold the ladder windows for the process lifetime — the signal engine
+   * calls this for its own symbol so every trend push can embed a full
+   * 10-timeframe NHNL block. Idempotent; released on stop().
+   */
+  async holdLadder(marketType: MarketType, symbol: string) {
+    const key = `${marketType}:${symbol}`;
+    if (this.held.has(key)) return;
+    this.held.add(key);
+    await this.acquireLadder(marketType, symbol).catch(() => undefined);
+    void marketHistory.track(marketType, symbol).catch(() => undefined);
+  }
+
+  /** Read-only ladder from whatever windows are currently held (no acquire). */
+  readLadder(marketType: MarketType, symbol: string, donN = DEFAULT_DON_N): NhnlSnapshot {
+    return this.buildSnapshot(marketType, symbol, donN);
   }
 
   /** Join a socket to the symbol's ladder room (idempotent per socket). */

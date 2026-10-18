@@ -1,7 +1,9 @@
 import { candleService } from './candleService';
+import { levelsService } from './levelsService';
 import { bus, Events } from '@/server/events/bus';
 import { notify } from '@/server/events/notifier';
 import { fmtPrice, tfSeconds } from '@/lib/format';
+import { DEFAULT_DON_N, NHNL_TFS, computeNhnlSnapshot } from '@/core/nhnl';
 import {
   SIGNAL_TFS, ACQUIRE_LIMIT, CONFIRM_BARS, SYMBOL, MARKET, ENABLED,
   HIT_ATR, HORIZON_BARS, TG_MIN_INTERVAL_MS, computeSuite, scoreAt, regimeWithHysteresis, regimeDir,
@@ -12,7 +14,7 @@ import {
   getWeight, getAccuracy, recordGrade, getCurrentVersionId,
   startOptimizerLoop, stopOptimizerLoop, optimizerSummary, runOptimization,
 } from './signalOptimizer';
-import type { Candle, PatternState, SignalSnapshot, TFSignal, Timeframe, TrendRegime } from '@/core/types';
+import type { Candle, NhnlRow, PatternState, SignalSnapshot, TFSignal, Timeframe, TrendRegime } from '@/core/types';
 
 // ─── Presentation ────────────────────────────────────────────────────────────
 
@@ -121,6 +123,12 @@ export class SignalEngine {
           console.error(`[signals] acquire ${tf} failed:`, e instanceof Error ? e.message : e);
         });
     }
+    // hold the full NHNL ladder for this symbol so every webhook push embeds
+    // the multi-timeframe new-high/new-low block (failure is non-fatal — the
+    // payload simply carries fewer rows until the windows are live)
+    await levelsService.holdLadder(MARKET, SYMBOL).catch((e) => {
+      console.error('[signals] hold NHNL ladder failed:', e instanceof Error ? e.message : e);
+    });
     this.busOffs.push(
       bus.on(Events.CANDLE_CLOSED, (p) => this.onCandleClosed(p as { key: string } | undefined)),
     );
@@ -578,10 +586,33 @@ export class SignalEngine {
       ].join('\n');
     }
     // structured payload for remote webhook consumers (same facts, machine-readable)
+    const ladderPrice = livePrice || sig.price;
+    const ladderWindows: Partial<Record<Timeframe, Candle[]>> = {};
+    for (const tf of NHNL_TFS) ladderWindows[tf] = candleService.peek(MARKET, SYMBOL, tf);
+    const nhnlRows = computeNhnlSnapshot(ladderWindows, ladderPrice, DEFAULT_DON_N);
+    const nhnl = nhnlRows.length ? { price: ladderPrice, donN: DEFAULT_DON_N, rows: nhnlRows } : null;
+    // human-readable ladder for the channel/in-app board: only the timeframes
+    // with an active break — the full 16-dimension grid lives in the payload
+    const nhnlText = (() => {
+      if (!nhnlRows.length) return '';
+      const fmt = (r: NhnlRow): string | null => {
+        const parts: string[] = [];
+        if (r.nh) parts.push('NH');
+        else if (r.nl) parts.push('NL');
+        if (r.brkUp) parts.push('prev↑');
+        else if (r.brkDown) parts.push('prev↓');
+        if (r.donUp) parts.push(`D${DEFAULT_DON_N}↑`);
+        else if (r.donDown) parts.push(`D${DEFAULT_DON_N}↓`);
+        return parts.length ? `${r.tf} ${parts.join('·')}` : null;
+      };
+      const breaks = nhnlRows.map(fmt).filter((x): x is string => x != null);
+      if (!breaks.length) return `\n\nNHNL ladder: all ${nhnlRows.length} TFs inside range`;
+      return `\n\nNHNL ladder: ${breaks.join(' | ')} · ${nhnlRows.length - breaks.length} inside`;
+    })();
     const webhookData = {
       symbol: SYMBOL,
       marketType: MARKET,
-      price: livePrice || sig.price,
+      price: ladderPrice,
       timeframe: tf,
       regime: sig.regime,
       score: sig.score,
@@ -590,9 +621,12 @@ export class SignalEngine {
         patterns: x.patterns.map((p) => ({ key: p.key, prob: p.prob })),
       })),
       levels: ml ? { resistance: ml.res, pivot: ml.pp, support: ml.sup, donchianHigh: ml.donHigh, donchianLow: ml.donLow, breakout: ml.breakout } : null,
+      // multi-timeframe new-high/new-low ladder (start() holds the windows;
+      // rows only cover timeframes whose windows are live)
+      nhnl,
     };
     notify('signal.trend', {
-      detail: `[${SYMBOL}] ${priceStr}\n\n${board}${levels}${patterns}`,
+      detail: `[${SYMBOL}] ${priceStr}\n\n${board}${levels}${patterns}${nhnlText}`,
     }, { level, channel: 'signal', data: webhookData });
     console.log(`[signals] ${SYMBOL} ${tf} -> ${sig.regime} (prob=${sig.prob ?? 'n/a'}) score=${sig.score}`);
   }

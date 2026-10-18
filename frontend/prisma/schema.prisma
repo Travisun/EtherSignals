@@ -58,6 +58,11 @@ model Signal {
   /// Null = daily data insufficient (model warmup).
   levels Json?
 
+  /// Multi-timeframe new-high/new-low ladder (1m→1M): forming-bar NH/NL,
+  /// previous-bar break and Donchian-N break per timeframe, plus distance %.
+  /// Null = ladder windows not ready at push time.
+  nhnl Json?
+
   /// Ingest time (our server clock) — the feed is ordered by this.
   receivedAt DateTime @default(now()) @db.Timestamptz(3)
 

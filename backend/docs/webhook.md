@@ -52,6 +52,31 @@ Authorization: Bearer <你的 token>     ← 设置页 Webhook Token 字段
     "donchianHigh": 2778.0,      // 20 根已收盘日线最高
     "donchianLow": 2405.71,      // 20 根已收盘日线最低
     "breakout": "inside"         // "up"=价格站上 Donchian 高 | "down"=跌破低 | "inside"=区间内
+  },
+  "nhnl": {                      // 多周期新高新低阶梯（10 周期：1m 1h 4h 8h 12h 1d 2d 3d 1w 1M）；
+    "price": 2402.5,             //   null = 阶梯窗口尚未就绪（引擎刚启动时可能发生）
+    "donN": 20,                  // Donchian 回看根数
+    "rows": [
+      {
+        "tf": "1h",              // 注意大小写：1m=分钟、1M=月
+        "barTime": 1792281600,   // 当前未收盘 K 的开盘时间（unix 秒）
+        "barHigh": 2405.0,       // 当前未收盘 K 的运行最高（已含现价）
+        "barLow": 2398.2,
+        "nh": true,              // 现价正处于本 K 运行新高
+        "nl": false,             // 现价正处于本 K 运行新低
+        "prevHigh": 2404.8,      // 上一根已收盘 K 高/低（null=历史不足）
+        "prevLow": 2397.9,
+        "brkUp": true,           // 现价突破前 K 高
+        "brkDown": false,        // 现价跌破前 K 低
+        "donHigh": 2412.0,       // 前 donN 根收盘 K 的 Donchian 上下沿（null=历史不足）
+        "donLow": 2390.5,
+        "donUp": false,          // 现价突破 donN 根通道高
+        "donDown": false,        // 现价跌破 donN 根通道低
+        "distHighPct": 0.0,      // 距本 K 高的百分比（0 即 nh 成立）
+        "distLowPct": 0.18       // 距本 K 低的百分比（0 即 nl 成立）
+      }
+      // ... 最多 10 项；仅包含窗口已就绪的周期
+    ]
   }
 }
 ```

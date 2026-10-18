@@ -23,6 +23,31 @@ export type LevelsDTO = {
   breakout: string;
 };
 
+export type NhnlRowDTO = {
+  tf: string; // case-sensitive: 1m (minute) vs 1M (month)
+  barTime: number;
+  barHigh: string;
+  barLow: string;
+  nh: boolean;
+  nl: boolean;
+  prevHigh: string | null;
+  prevLow: string | null;
+  brkUp: boolean;
+  brkDown: boolean;
+  donHigh: string | null;
+  donLow: string | null;
+  donUp: boolean;
+  donDown: boolean;
+  distHighPct: number | null;
+  distLowPct: number | null;
+};
+
+export type NhnlDTO = {
+  price?: string;
+  donN: number;
+  rows: NhnlRowDTO[];
+};
+
 /**
  * Wire format for signals. Prices are decimal strings (JSON numbers lose
  * precision beyond 2^53 and Prisma Decimal is not JSON-serializable);
@@ -40,6 +65,7 @@ export type SignalDTO = {
   message: string | null;
   board: BoardEntryDTO[] | null;
   levels: LevelsDTO | null;
+  nhnl: NhnlDTO | null;
   pushedAt: string;
   receivedAt: string;
 };
@@ -64,6 +90,10 @@ export function serializeSignal(s: Signal): SignalDTO {
     s.levels && typeof s.levels === "object" && !Array.isArray(s.levels)
       ? serializeLevels(s.levels as Record<string, unknown>)
       : null;
+  const nhnl =
+    s.nhnl && typeof s.nhnl === "object" && !Array.isArray(s.nhnl)
+      ? serializeNhnl(s.nhnl as Record<string, unknown>)
+      : null;
   return {
     id: s.id,
     type: s.type,
@@ -76,6 +106,7 @@ export function serializeSignal(s: Signal): SignalDTO {
     message: s.message,
     board: board && board.length > 0 ? board : null,
     levels,
+    nhnl,
     pushedAt: s.pushedAt.toISOString(),
     receivedAt: s.receivedAt.toISOString(),
   };
@@ -110,6 +141,42 @@ function serializeLevels(l: Record<string, unknown>): LevelsDTO {
     donchianHigh: num(l.donchianHigh),
     donchianLow: num(l.donchianLow),
     breakout: typeof l.breakout === "string" ? l.breakout : "inside",
+  };
+}
+
+function serializeNhnl(n: Record<string, unknown>): NhnlDTO | null {
+  const rawRows = Array.isArray(n.rows) ? n.rows : [];
+  const rows = rawRows.slice(0, 12).map((r): NhnlRowDTO => {
+    const row = (r ?? {}) as Record<string, unknown>;
+    const str = (v: unknown): string | null =>
+      typeof v === "number" || typeof v === "string" ? String(v) : null;
+    const numOrNull = (v: unknown): number | null =>
+      typeof v === "number" && Number.isFinite(v) ? v : null;
+    const bool = (v: unknown): boolean => v === true;
+    return {
+      tf: typeof row.tf === "string" ? row.tf : "?",
+      barTime: typeof row.barTime === "number" ? row.barTime : 0,
+      barHigh: str(row.barHigh) ?? "0",
+      barLow: str(row.barLow) ?? "0",
+      nh: bool(row.nh),
+      nl: bool(row.nl),
+      prevHigh: str(row.prevHigh),
+      prevLow: str(row.prevLow),
+      brkUp: bool(row.brkUp),
+      brkDown: bool(row.brkDown),
+      donHigh: str(row.donHigh),
+      donLow: str(row.donLow),
+      donUp: bool(row.donUp),
+      donDown: bool(row.donDown),
+      distHighPct: numOrNull(row.distHighPct),
+      distLowPct: numOrNull(row.distLowPct),
+    };
+  });
+  if (!rows.length) return null;
+  return {
+    price: typeof n.price === "number" || typeof n.price === "string" ? String(n.price) : undefined,
+    donN: typeof n.donN === "number" ? n.donN : 20,
+    rows,
   };
 }
 

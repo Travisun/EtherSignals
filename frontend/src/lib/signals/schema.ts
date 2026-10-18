@@ -73,6 +73,42 @@ const levelsSchema = z
   .nullable()
   .optional();
 
+// NHNL ladder timeframes keep case: "1m" (minute) vs "1M" (month) are distinct.
+const nhnlTfSchema = z
+  .string()
+  .trim()
+  .max(4)
+  .regex(/^\d{1,3}[smhdwM]$/, "invalid ladder timeframe (expected like 1m, 4h, 2d, 1M)");
+
+const nhnlRowSchema = z.object({
+  tf: nhnlTfSchema,
+  barTime: z.number().int().nonnegative(),
+  // prices normalize to decimal strings (same convention as `levels`)
+  barHigh: priceSchema,
+  barLow: priceSchema,
+  nh: z.boolean(),
+  nl: z.boolean(),
+  prevHigh: priceSchema.nullable(),
+  prevLow: priceSchema.nullable(),
+  brkUp: z.boolean(),
+  brkDown: z.boolean(),
+  donHigh: priceSchema.nullable(),
+  donLow: priceSchema.nullable(),
+  donUp: z.boolean(),
+  donDown: z.boolean(),
+  distHighPct: z.number().finite().nullable(),
+  distLowPct: z.number().finite().nullable(),
+});
+
+const nhnlSchema = z
+  .object({
+    price: priceSchema.optional(),
+    donN: z.number().int().min(1).max(200).optional().default(20),
+    rows: z.array(nhnlRowSchema).max(12),
+  })
+  .nullable()
+  .optional();
+
 export const signalTrendSchema = z
   .object({
     type: z.literal("signal.trend"),
@@ -90,6 +126,7 @@ export const signalTrendSchema = z
     score: z.number().min(-1).max(1),
     signals: z.array(boardEntrySchema).min(1).max(BOARD_SIZE).optional(),
     levels: levelsSchema,
+    nhnl: nhnlSchema,
   })
   .transform((data) => ({
     ...data,
@@ -138,6 +175,7 @@ export function toSignalInput(
     message: s.message ?? null,
     board: s.signals ? (s.signals as Prisma.InputJsonValue) : Prisma.DbNull,
     levels: (s.levels ?? Prisma.DbNull) as Prisma.NullableJsonNullValueInput,
+    nhnl: (s.nhnl ?? Prisma.DbNull) as Prisma.NullableJsonNullValueInput,
     raw: compactRaw(raw) as Prisma.InputJsonValue,
   };
 }
