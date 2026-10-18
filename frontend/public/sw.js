@@ -9,7 +9,7 @@
  *
  * Bump VERSION on material changes to invalidate old caches.
  */
-const VERSION = "ethersignals-v2";
+const VERSION = "ethersignals-v3";
 const OFFLINE_URL = "/offline";
 const STATIC_CACHE = `${VERSION}-static`;
 

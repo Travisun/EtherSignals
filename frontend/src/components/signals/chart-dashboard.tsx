@@ -308,9 +308,19 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
     api.vwap.applyOptions({ visible: overlays.vwap });
 
     if (fittedForTf.current !== tf) {
-      // default zoom: the most recent ~80 candles in readable detail
-      const from = Math.max(0, candles.length - 80);
-      api.chart.timeScale().setVisibleLogicalRange({ from, to: candles.length + 4 });
+      // default zoom: the most recent ~80 candles in readable detail.
+      // autoSize resolves its first measurement asynchronously and the
+      // initial sizing pass can wipe an eager range — apply now, then again
+      // on the next two animation frames so the zoom survives sizing.
+      const applyZoom = () => {
+        api.chart.timeScale().setVisibleLogicalRange({
+          from: Math.max(0, candles.length - 80),
+          to: candles.length + 4,
+        });
+      };
+      applyZoom();
+      requestAnimationFrame(applyZoom);
+      requestAnimationFrame(() => requestAnimationFrame(applyZoom));
       fittedForTf.current = tf;
       setFollow(true);
     } else if (followRef.current) {
