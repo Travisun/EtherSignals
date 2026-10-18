@@ -218,3 +218,15 @@ R3 = H+2·(PP−L)  S3 = L−2·(H−PP)
   仅列出有突破的周期，如 `NHNL ladder: 1m NL | 1h NL · 8 inside`；完整 16 维数据仍在
   webhook 结构化载荷 `nhnl` 字段中。
 - **前端排版**：工作台（条带 + 可展开全量表）与公开站（信号抽屉、feed 展开详情）均已渲染阶梯。
+
+### 12.2 维度全面接线（2026-10-18 晚）
+
+- **SignalSnapshot 嵌入 `nhnl`**：`/api/signals`、socket `signals:update`、MCP `get_signals` 全部携带阶梯。
+- **推送模板**改为展示全部 10 周期最强状态（如 `NHNL ladder: 1m NL | 4h NH·prev↑ …`，无突破显示 `·`）。
+- **webhook.test 样例**携带合规 nhnl 块（不再为 null）。
+- **后端信号记录**：`signalPushRepo`（上限 300 条环形，JSON 落盘）保存结构化推送（board+levels+nhnl），
+  `GET /api/signals?view=history` 读取。
+- **前端存储**：公开站 `Signal.nhnl`（Prisma 列+迁移）已适配；feed DTO 携带。
+- **公开站 /chart**：lightweight-charts K线+成交量，每条信号推送以 regime 着色标记在价格线上；
+  右栏趋势棋盘/阶梯/关键位一屏总览。数据经 `/api/market/candles`——进程内 10s 内存缓存（single-flight 去重）
+  + 每 IP 恰好 1 次/10s；浏览器全部从缓存分发，不直连交易所。
