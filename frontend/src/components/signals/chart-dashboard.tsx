@@ -14,7 +14,7 @@
  * Data: 4s candle polling (server memory cache + 15 req/min/IP), 4s feed.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ColorType,
   CrosshairMode,
@@ -22,7 +22,6 @@ import {
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
-  type SeriesMarker,
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
@@ -112,9 +111,14 @@ function rollingVwap(candles: Candle[]): (number | null)[] {
   });
 }
 
-interface GradedMarker {
-  marker: SeriesMarker<Time>;
+interface BoardGrade {
+  tf: string;
+  regime: string;
+  score: number;
+  prob: number | null;
+  dir: 1 | -1;
   outcome: "hit" | "miss" | "flat" | "pending";
+  realizedPct: number | null;
 }
 
 export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[] }) {
@@ -145,7 +149,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
 
   const latest = signals[0] ?? null;
 
-  // candles: poll every 10s — matches the server's per-IP window exactly
+  // candles: poll every 4s — matches the server's per-IP window exactly
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -329,11 +333,10 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
     }
   }, [candles, tf, overlays]);
 
-  // ── graded markers: predicted arrow + continuation % + realized ✓/✗ ──
-  const graded = useMemo<GradedMarker[]>(() => {
-    if (candles.length === 0) return [];
-    const step = TF_SECONDS[tf] ?? 300;
-    const closeAtOrBefore = (tSec: number): number | null => {
+  // ── forecast board: per-timeframe prediction graded vs realized move ──
+  const closeAtOrBefore = useCallback(
+    (tSec: number): number | null => {
+      if (candles.length === 0) return null;
       let lo = 0;
       let hi = candles.length - 1;
       if (tSec < candles[0].time) return null;
@@ -348,46 +351,42 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
         }
       }
       return best;
-    };
-    const seen = new Set<number>();
-    const out: GradedMarker[] = [];
-    for (const s of signals.slice(0, 40)) {
-      const sigStep = TF_SECONDS[s.timeframe] ?? 900;
-      const tSec = Math.floor(new Date(s.pushedAt).getTime() / 1000 / step) * step;
-      if (seen.has(tSec)) continue;
-      seen.add(tSec);
-      const dir = s.score >= 0 ? 1 : -1;
-      const probTxt = s.board?.find((b) => b.tf === s.timeframe)?.prob;
-      const prob = probTxt != null ? `${Math.round(probTxt * 100)}%` : "";
-      const entry = closeAtOrBefore(Math.floor(new Date(s.pushedAt).getTime() / 1000));
-      const exit = closeAtOrBefore(Math.floor(new Date(s.pushedAt).getTime() / 1000) + 3 * sigStep);
-      let outcome: GradedMarker["outcome"] = "pending";
-      let outcomeGlyph = "";
-      if (entry != null && exit != null) {
-        const movePct = ((exit - entry) / entry) * 100;
-        if (Math.abs(movePct) < 0.1) outcome = "flat";
-        else if ((movePct > 0 && dir > 0) || (movePct < 0 && dir < 0)) outcome = "hit";
-        else outcome = "miss";
-        outcomeGlyph = outcome === "hit" ? " ✓" : outcome === "miss" ? " ✗" : outcome === "flat" ? " ≈" : "";
-      }
-      out.push({
-        outcome,
-        marker: {
-          time: tSec as Time,
-          position: (dir > 0 ? "belowBar" : "aboveBar") as "belowBar" | "aboveBar",
-          color: REGIME_HEX[s.regime] ?? "#8b8f98",
-          shape: (dir > 0 ? "arrowUp" : "arrowDown") as "arrowUp" | "arrowDown",
-          text: `${s.timeframe} ${dir > 0 ? "↑" : "↓"}${prob ? ` ${prob}` : ""}${outcomeGlyph}`,
-          size: 1.4,
-        },
-      });
-    }
-    return out.sort((a, b) => (a.marker.time as number) - (b.marker.time as number));
-  }, [signals, tf, candles]);
+    },
+    [candles],
+  );
 
-  useEffect(() => {
-    apiRef.current?.series.setMarkers(graded.map((g) => g.marker));
-  }, [graded]);
+  const boardGrades = useMemo<BoardGrade[]>(() => {
+    if (!latest?.board || candles.length === 0) return [];
+    const pushed = Math.floor(new Date(latest.pushedAt).getTime() / 1000);
+    const order = TF_SECONDS;
+    return [...latest.board]
+      .sort((a, b) => (order[a.tf] ?? 0) - (order[b.tf] ?? 0))
+      .map((b) => {
+        const sec = order[b.tf] ?? 900;
+        const dir: 1 | -1 = b.score >= 0 ? 1 : -1;
+        const entry = closeAtOrBefore(pushed);
+        const exit = closeAtOrBefore(pushed + 3 * sec);
+        let outcome: BoardGrade["outcome"] = "pending";
+        let realizedPct: number | null = null;
+        if (entry != null && exit != null) {
+          realizedPct = ((exit - entry) / entry) * 100;
+          if (Math.abs(realizedPct) < 0.1) outcome = "flat";
+          else if ((realizedPct > 0 && dir > 0) || (realizedPct < 0 && dir < 0)) outcome = "hit";
+          else outcome = "miss";
+        }
+        return {
+          tf: b.tf,
+          regime: b.regime,
+          score: b.score,
+          prob: b.prob,
+          dir,
+          outcome,
+          realizedPct,
+        };
+      });
+  }, [latest, candles, closeAtOrBefore]);
+
+
 
   // the model's key levels as horizontal reference lines
   useEffect(() => {
@@ -425,9 +424,9 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
 
   // forecast accountability + consensus strip
   const stats = useMemo(() => {
-    const gradedOnly = graded.filter((g) => g.outcome === "hit" || g.outcome === "miss");
+    const gradedOnly = boardGrades.filter((g) => g.outcome === "hit" || g.outcome === "miss");
     const hits = gradedOnly.filter((g) => g.outcome === "hit").length;
-    const hitRate = gradedOnly.length >= 3 ? Math.round((hits / gradedOnly.length) * 100) : null;
+    const hitRate = gradedOnly.length >= 2 ? Math.round((hits / gradedOnly.length) * 100) : null;
     const dirs = (latest?.board ?? []).reduce(
       (acc, b) => {
         if (b.regime.includes("up")) acc.up += 1;
@@ -440,7 +439,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
     const lean =
       dirs.up > dirs.down ? "bullish lean" : dirs.down > dirs.up ? "bearish lean" : "balanced";
     return { hitRate, graded: gradedOnly.length, dirs, lean };
-  }, [graded, latest]);
+  }, [boardGrades, latest]);
 
   const price = candles.at(-1)?.close ?? (latest?.price ? Number(latest.price) : null);
   const prev = candles.at(-2)?.close ?? price ?? 0;
@@ -506,7 +505,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
           ) : null}
           {stats.hitRate != null ? (
             <span
-              title="Direction arrows show what the model predicted at push time; ✓/✗ grades it against the realized price move over the next 3 signal-candles."
+              title="Each column grades the model prediction for that timeframe against the realized price move over its next 3 candles."
               className="tnum rounded-md border border-border px-2 py-0.5 text-xs font-semibold text-muted-foreground"
             >
               forecast hit-rate {stats.hitRate}% <span className="font-normal">(n={stats.graded})</span>
@@ -610,6 +609,69 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
             ? `refreshed ${new Date(updatedAt).toLocaleTimeString()} · candles 4s · signals 4s · `
             : "loading…"}
       </p>
+
+      {/* forecast strip: one column per timeframe — prediction vs actual */}
+      {latest && boardGrades.length ? (
+        <div className="mt-3 overflow-x-auto pb-1">
+          <div className="grid auto-cols-fr grid-flow-col gap-2">
+            {boardGrades.map((g) => {
+              const meta = regimeMeta(g.regime);
+              const trigger = g.tf === latest.timeframe;
+              return (
+                <div
+                  key={g.tf}
+                  className={cn(
+                    "min-w-[104px] rounded-lg border p-2 text-center",
+                    trigger ? "border-primary/50 bg-primary/5" : "border-border bg-card",
+                  )}
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {g.tf}
+                    {trigger ? " · trigger" : ""}
+                  </p>
+                  <p
+                    className={cn(
+                      "mt-1 text-2xl font-bold leading-none",
+                      g.dir > 0 ? "text-success" : "text-destructive",
+                    )}
+                  >
+                    {g.dir > 0 ? "↑" : "↓"}
+                  </p>
+                  <p className={cn("mt-1 text-[10px] font-semibold uppercase tracking-wider", meta.text)}>
+                    {meta.label}
+                  </p>
+                  <p className="tnum mt-1 text-xs font-bold">
+                    {g.prob == null ? "n/a" : `${Math.round(g.prob * 100)}%`}
+                  </p>
+                  <p className="text-[9px] text-muted-foreground">continuation</p>
+                  <p className="tnum text-[10px] text-muted-foreground">score {formatScore(g.score)}</p>
+                  <p
+                    className={cn(
+                      "tnum mt-1 rounded px-1 py-0.5 text-[10px] font-bold",
+                      g.outcome === "hit"
+                        ? "bg-success/15 text-success"
+                        : g.outcome === "miss"
+                          ? "bg-destructive/15 text-destructive"
+                          : g.outcome === "flat"
+                            ? "bg-muted text-muted-foreground"
+                            : "bg-muted/60 text-muted-foreground",
+                    )}
+                    title="graded against the realized move over the next 3 candles of this timeframe"
+                  >
+                    {g.outcome === "hit"
+                      ? `✓ hit +${(g.realizedPct ?? 0).toFixed(2)}%`
+                      : g.outcome === "miss"
+                        ? `✗ miss ${(g.realizedPct ?? 0).toFixed(2)}%`
+                        : g.outcome === "flat"
+                          ? "≈ flat"
+                          : "⏳ pending"}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         {/* chart — full width on PC, height scales with the viewport */}
