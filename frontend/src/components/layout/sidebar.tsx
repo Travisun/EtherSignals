@@ -60,7 +60,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-border bg-background/95 pt-[max(env(safe-area-inset-top),0.75rem)] pb-[max(env(safe-area-inset-bottom),0.75rem)] backdrop-blur-md transition-[width] duration-200 lg:flex",
+        "fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-border bg-background/95 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-md transition-[width] duration-200 lg:flex",
         expanded ? "w-56" : "w-[3.75rem]",
       )}
     >
@@ -85,12 +85,6 @@ export function Sidebar() {
             <Logo size={26} />
           </Link>
         )}
-        {expanded ? (
-          <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <span className="live-dot" aria-hidden={true} />
-            Live
-          </span>
-        ) : null}
         <button
           type="button"
           onClick={toggle}
@@ -98,7 +92,7 @@ export function Sidebar() {
           title={expanded ? "Collapse" : "Expand"}
           className={cn(
             "rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-            expanded ? "ml-1" : "",
+            expanded ? "ml-auto" : "",
           )}
         >
           {expanded ? <ChevronsLeft className="size-4" /> : <ChevronsRight className="size-4" />}
