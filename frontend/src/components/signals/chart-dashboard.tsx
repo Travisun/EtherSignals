@@ -26,6 +26,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { SignalDTO } from "@/lib/signals/dto";
+import { computeForecasts } from "@/lib/model/forecasts";
 import { RegimeBadge, TrendBoard, formatScore, regimeMeta } from "@/components/signals/regime";
 import { formatPrice } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -217,6 +218,23 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
       vwap: rollingVwap(candles),
     };
   }, [candles]);
+
+  // per-candle model forecast (client-side replay of the producer's model)
+  const forecasts = useMemo(
+    () =>
+      computeForecasts(
+        candles.map((c) => ({
+          time: c.time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          baseVol: c.volume,
+        })),
+        tf,
+      ),
+    [candles, tf],
+  );
 
   // push signals bucketed onto chart-candle times
   const signalMap = useMemo(() => {
@@ -481,28 +499,30 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
     if (!api) return;
     const compute = () => {
       const ts = api.chart.timeScale();
-      const step = TF_SECONDS[tf] ?? 300;
+      const range = ts.getVisibleLogicalRange();
+      if (!range) return;
+      const from = Math.max(60, Math.floor(range.from));
+      const to = Math.min(candlesCountRef.current - 1, Math.ceil(range.to));
+      if (to - from < 2) return;
+      // one stack per sampled candle — zoom in for every candle, zoom out
+      // for a readable sample (~36 stacks across the viewport)
+      const step = Math.max(1, Math.ceil((to - from) / 36));
       const items: { x: number; dir: 1 | -1; prob: number | null; outcome: string }[] = [];
-      let lastX = -999;
-      for (const s of signals) {
-        const pushedSec = Math.floor(new Date(s.pushedAt).getTime() / 1000);
-        const t = Math.floor(pushedSec / step) * step;
-        const x = ts.timeToCoordinate(t as UTCTimestamp);
-        if (x == null) continue; // outside the visible range
-        if (Math.abs(x - lastX) < 40) continue; // avoid pile-ups on dense pushes
-        lastX = x;
-        const dir: 1 | -1 = s.score >= 0 ? 1 : -1;
-        const prob = s.board?.find((b) => b.tf === s.timeframe)?.prob ?? null;
-        const close = closeAtOrBefore(pushedSec);
-        const exit = closeAtOrBefore(pushedSec + 3 * (TF_SECONDS[s.timeframe] ?? 900));
+      for (let i = from; i <= to; i += step) {
+        const f = forecasts[i];
+        if (!f || f.dir === 0) continue;
+        const x = ts.timeToCoordinate(candles[i]?.time as UTCTimestamp);
+        if (x == null) continue;
+        const entry = closeAtOrBefore(candles[i]?.time ?? 0);
+        const exit = closeAtOrBefore((candles[i]?.time ?? 0) + 3 * (TF_SECONDS[tf] ?? 300));
         let outcome = "⏳";
-        if (close != null && exit != null) {
-          const movePct = ((exit - close) / close) * 100;
+        if (entry != null && exit != null) {
+          const movePct = ((exit - entry) / entry) * 100;
           if (Math.abs(movePct) < 0.1) outcome = "≈";
-          else if ((movePct > 0 && dir > 0) || (movePct < 0 && dir < 0)) outcome = "✓";
+          else if ((movePct > 0 && f.dir > 0) || (movePct < 0 && f.dir < 0)) outcome = "✓";
           else outcome = "✗";
         }
-        items.push({ x, dir, prob, outcome });
+        items.push({ x, dir: f.dir as 1 | -1, prob: f.prob, outcome });
       }
       setOverlayItems(items);
     };
@@ -515,7 +535,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
       ts.unsubscribeVisibleLogicalRangeChange(handler);
       window.removeEventListener("resize", handler);
     };
-  }, [signals, tf, candles, closeAtOrBefore]);
+  }, [signals, tf, candles, forecasts, closeAtOrBefore]);
 
   // forecast accountability + consensus strip
   const stats = useMemo(() => {
@@ -698,6 +718,10 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
         </span>
       </div>
       <p className="mt-1 text-[10px] text-muted-foreground">
+        <span className="hidden md:inline">
+          top row = model forecast per candle (▲/▼ direction · continuation %) · ✓/✗ = actual
+          outcome vs the next 3 candles · ≈ = move below 0.1% (flat) ·{" "}
+        </span>
         {error
           ? `⚠ ${error}`
           : updatedAt
