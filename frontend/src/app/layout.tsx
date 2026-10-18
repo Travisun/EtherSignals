@@ -100,11 +100,11 @@ export default function RootLayout({
           <Sidebar />
           <main
             id="main"
-            className="w-full flex-1 px-3 pb-24 pt-[calc(4rem+env(safe-area-inset-top))] sm:px-5 md:pb-8 lg:pb-10 lg:pl-60 lg:pr-6 lg:pt-6 xl:pr-8"
+            className="w-full flex-1 px-3 pb-24 pt-[calc(4rem+env(safe-area-inset-top))] sm:px-5 md:pb-8 lg:pb-10 lg:pl-[var(--sidebar-w,3.75rem)] lg:pr-6 lg:pt-[calc(1.5rem+env(safe-area-inset-top))] xl:pr-8"
           >
             {children}
           </main>
-          <div className="lg:pl-56">
+          <div className="lg:pl-[var(--sidebar-w,3.75rem)]">
             <Footer />
           </div>
           <Toaster

@@ -609,54 +609,22 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
           : updatedAt
             ? `refreshed ${new Date(updatedAt).toLocaleTimeString()} · candles 10s · signals 20s · `
             : "loading…"}
-        <span className="hidden md:inline">
-          arrows = model prediction at push time (↑/↓ + continuation %), ✓/✗ = actual outcome vs the
-          next 3 candles · dashed lines = model key levels
-        </span>
       </p>
 
       <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         {/* chart — full width on PC, height scales with the viewport */}
         <div className="min-w-0">
           <div ref={chartDivRef} className="h-[clamp(360px,62vh,780px)] w-full" />
-          <div className="mt-2 grid gap-2 md:grid-cols-2">
-            {latest ? (
-              <div className="rounded-lg bg-muted/40 p-2.5">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Trend board · five timeframes
-                </p>
-                <div className="mt-1.5">
-                  <TrendBoard board={latest.board} highlightTf={latest.timeframe} />
-                </div>
-              </div>
-            ) : null}
-            <div className="rounded-lg bg-muted/40 p-2.5">
+          {latest ? (
+            <div className="mt-2 rounded-lg bg-muted/40 p-2.5">
               <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                Marker legend
+                Trend board · five timeframes
               </p>
-              <ul className="mt-1.5 space-y-0.5 text-[10px] leading-relaxed text-muted-foreground">
-                <li>
-                  <span className="font-semibold text-success">↑ arrow</span> /{" "}
-                  <span className="font-semibold text-destructive">↓ arrow</span> — model prediction
-                  at push time, colored by trend regime
-                </li>
-                <li>
-                  <span className="font-semibold">percentage</span> — continuation probability of the
-                  triggering timeframe
-                </li>
-                <li>
-                  <span className="font-semibold text-success">✓</span> /{" "}
-                  <span className="font-semibold text-destructive">✗</span> /{" "}
-                  <span className="font-semibold">≈</span> — realized outcome vs the next 3
-                  signal-candles (≥0.1% decisive)
-                </li>
-                <li>
-                  <span className="font-semibold">dashed lines</span> — R/S/PP + 20-day Donchian from
-                  the model; colored solid lines = EMA/BOLL/VWAP overlays
-                </li>
-              </ul>
+              <div className="mt-1.5">
+                <TrendBoard board={latest.board} highlightTf={latest.timeframe} />
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
 
         {/* right rail — full channel prices per window */}
