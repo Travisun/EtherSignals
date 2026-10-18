@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const tf = url.searchParams.get("tf") ?? "5m";
-  const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 300) || 300, 50), 500);
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 300) || 300, 50), 1000);
   if (!CHART_TFS.includes(tf)) {
     return ERR.badRequest(`unsupported tf (expected one of ${CHART_TFS.join(", ")})`);
   }

@@ -2,60 +2,58 @@
 
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/utils";
-import type { NhnlDTO } from "@/lib/signals/dto";
+import type { NhnlDTO, NhnlRowDTO } from "@/lib/signals/dto";
+
+/** One window's plain-language state — no cryptic abbreviations. */
+function describeRow(r: NhnlRowDTO, donN: number): { text: string; tone: string; hint: string } {
+  const bull = "text-success";
+  const bear = "text-destructive";
+  const mixed = "text-amber-500";
+  if (r.nh && r.nl)
+    return { text: "at both high & low", tone: mixed, hint: "window just opened — one print so far" };
+  if (r.nh)
+    return { text: "at a new HIGH", tone: bull, hint: "the live price is the highest since this window opened" };
+  if (r.nl)
+    return { text: "at a new LOW", tone: bear, hint: "the live price is the lowest since this window opened" };
+  if (r.brkUp)
+    return { text: "broke prev. high", tone: bull, hint: `price moved above the previous closed ${r.tf} candle's high` };
+  if (r.brkDown)
+    return { text: "broke prev. low", tone: bear, hint: `price moved below the previous closed ${r.tf} candle's low` };
+  if (r.donUp)
+    return { text: `${donN}-window high broken`, tone: bull, hint: `price is above the highest of the last ${donN} closed candles` };
+  if (r.donDown)
+    return { text: `${donN}-window low broken`, tone: bear, hint: `price is below the lowest of the last ${donN} closed candles` };
+  return { text: "inside range", tone: "text-muted-foreground", hint: "no break on this window" };
+}
 
 /**
- * Multi-timeframe new-high/new-low ladder from the producer's `nhnl` block:
- * per timeframe, whether the live price is at the forming bar's running
- * high/low (NH/NL), broke the previous closed bar (prev), or broke the
- * Donchian-N channel — plus the distance to the current bar's extremes.
- * Shared by the signal drawer and the feed's expanded detail view.
+ * Multi-timeframe new-high/new-low ladder from the producer's `nhnl` block.
+ * Each row answers, in plain language: is the live price at a new high/low
+ * of that window's forming candle, did it break the previous closed candle,
+ * and did it break the Donchian-N channel — plus how far it is from the
+ * window's current high/low. Shared by the drawer, feed detail and /chart.
  */
 export function NhnlLadder({ nhnl, className }: { nhnl: NhnlDTO; className?: string }) {
   return (
     <div className={cn("mt-3.5", className)}>
-      <p className="mb-1 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-        New high / low ladder · Donchian-{nhnl.donN}
-      </p>
       <div className="overflow-hidden rounded-lg bg-muted/60">
-        <table className="w-full text-[10px]">
+        <table className="w-full text-[11px]">
           <thead>
-            <tr className="text-muted-foreground">
-              <th className="px-2 py-1 text-left font-semibold">TF</th>
-              <th className="px-1 py-1 text-left font-semibold">State</th>
-              <th className="px-2 py-1 text-right font-semibold">Bar H / L</th>
-              <th className="px-2 py-1 text-right font-semibold">To H / L %</th>
+            <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              <th className="px-2 py-1.5 text-left font-semibold">Window</th>
+              <th className="px-1 py-1.5 text-left font-semibold">What happened</th>
+              <th className="px-2 py-1.5 text-right font-semibold">To high / to low</th>
             </tr>
           </thead>
           <tbody className="tnum">
             {nhnl.rows.map((r) => {
-              const bull = r.nh || r.brkUp || r.donUp;
-              const bear = r.nl || r.brkDown || r.donDown;
-              const tone =
-                bull && bear
-                  ? "text-amber-500"
-                  : bull
-                    ? "text-success"
-                    : bear
-                      ? "text-destructive"
-                      : "text-muted-foreground";
-              const state =
-                [
-                  r.nh ? "NH" : r.nl ? "NL" : null,
-                  r.brkUp ? "prev↑" : r.brkDown ? "prev↓" : null,
-                  r.donUp ? `D${nhnl.donN}↑` : r.donDown ? `D${nhnl.donN}↓` : null,
-                ]
-                  .filter(Boolean)
-                  .join(" ") || "·";
+              const d = describeRow(r, nhnl.donN);
               return (
-                <tr key={r.tf} className="border-t border-border/50">
-                  <td className="px-2 py-1 font-semibold">{r.tf}</td>
-                  <td className={cn("px-1 py-1 font-semibold", tone)}>{state}</td>
-                  <td className="px-2 py-1 text-right text-muted-foreground">
-                    {formatPrice(r.barHigh)} / {formatPrice(r.barLow)}
-                  </td>
-                  <td className="px-2 py-1 text-right text-muted-foreground">
-                    {r.distHighPct?.toFixed(2) ?? "—"} / {r.distLowPct?.toFixed(2) ?? "—"}
+                <tr key={r.tf} className="border-t border-border/50" title={d.hint}>
+                  <td className="px-2 py-1.5 font-semibold">{r.tf}</td>
+                  <td className={cn("px-1 py-1.5 font-semibold", d.tone)}>{d.text}</td>
+                  <td className="px-2 py-1.5 text-right text-muted-foreground">
+                    {(r.distHighPct ?? 0).toFixed(2)}% / {(r.distLowPct ?? 0).toFixed(2)}%
                   </td>
                 </tr>
               );
@@ -63,6 +61,12 @@ export function NhnlLadder({ nhnl, className }: { nhnl: NhnlDTO; className?: str
           </tbody>
         </table>
       </div>
+      <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
+        Each row is one window (1h = the current hour, 1d = today, …).
+        &quot;To high / to low&quot; = how far the price is (in %) from this window&apos;s running high and
+        low — 0.00 means the price IS that extreme right now. A window&apos;s extremes update
+        live with every trade.
+      </p>
     </div>
   );
 }

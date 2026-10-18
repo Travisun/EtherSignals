@@ -562,49 +562,64 @@ export class SignalEngine {
     const snap = this.snapshot();
     const livePrice = candleService.lastPrice(MARKET, SYMBOL);
     const priceStr = fmtPrice(livePrice || sig.price, 'en');
-    const rows = snap.signals.map((s) => ({
-      tf: s.tf,
-      sig: `${REGIME_ICON[s.regime]} ${REGIME_EN[s.regime]}`,
-      pct: s.prob == null ? '—' : `${Math.round(s.prob * 100)}%`,
-    }));
-    const sigW = Math.max('Signal'.length, ...rows.map((r) => r.sig.length));
+    const ticker = candleService.ticker(MARKET, SYMBOL);
+    const chg = ticker?.change24h != null ? ` (${ticker.change24h >= 0 ? '+' : ''}${(ticker.change24h * 100).toFixed(2)}% 24h)` : '';
+    const priceLine = `[${SYMBOL} · ${MARKET.toUpperCase()}]  ${priceStr}${chg}`;
+
+    // ── trend board: model state + continuation + self-accuracy per TF ──
+    const boardRows = snap.signals.map((x) => {
+      const acc = getAccuracy(x.tf);
+      return {
+        tf: x.tf,
+        sig: `${REGIME_ICON[x.regime]} ${REGIME_EN[x.regime]}`,
+        score: `${x.score >= 0 ? '+' : ''}${x.score.toFixed(2)}`,
+        cont: x.prob == null ? '—' : `${Math.round(x.prob * 100)}%`,
+        acc: acc.n >= 20 ? `${Math.round((acc.wins / acc.n) * 100)}%` : '—',
+      };
+    });
+    const sigW = Math.max('Trend'.length, ...boardRows.map((r) => r.sig.length));
     const board = [
-      `TF  Signal${' '.repeat(sigW - 'Signal'.length + 2)}Win%`,
-      ...rows.map((r) => `${r.tf.padEnd(3)}  ${r.sig.padEnd(sigW + 2)}${r.pct.padStart(5)}`),
+      'TF   Trend' + ' '.repeat(sigW - 'Trend'.length + 2) + 'Score  Cont%  Self%',
+      ...boardRows.map(
+        (r) =>
+          `${r.tf.padEnd(4)} ${r.sig.padEnd(sigW + 2)} ${r.score.padStart(5)}  ${r.cont.padStart(5)}  ${r.acc.padStart(5)}`,
+      ),
     ].join('\n');
+
     const level = sig.regime === 'strong_up' ? 'success' : sig.regime === 'strong_down' ? 'warning' : 'info';
     const patterns = sig.patterns.length
-      ? `\n\nPatterns: ${sig.patterns
+      ? `\n\nPATTERNS  ${sig.patterns
           .map((p) => (p.prob == null ? PATTERN_EN[p.key] : `${PATTERN_EN[p.key]} ${fmtPct(p.prob)}`))
-          .join(', ')}`
+          .join(' · ')}`
       : '';
-    let levels = '';
+
+    // ── key levels ──
     const ml = this.marketLevels();
+    let levels = '';
     if (ml) {
       const f = (v?: number) => (v == null ? '—' : fmtPrice(v, 'en'));
       const d = (v?: number) => (v == null || !livePrice ? '—' : `${v >= livePrice ? '+' : ''}${(((v - livePrice) / livePrice) * 100).toFixed(2)}%`);
-      const bo = ml.breakout === 'up' ? 'BREAKOUT' : ml.breakout === 'down' ? 'BREAKDOWN' : 'inside';
+      const bo = ml.breakout === 'up' ? 'BROKE ↑' : ml.breakout === 'down' ? 'BROKE ↓' : 'inside';
       levels = [
         '',
-        'Levels',
+        'KEY LEVELS (daily)',
         `  Resistance  ${f(ml.res).padStart(10)}  ${d(ml.res).padStart(8)}`,
         `  Pivot       ${f(ml.pp).padStart(10)}  ${d(ml.pp).padStart(8)}`,
         `  Support     ${f(ml.sup).padStart(10)}  ${d(ml.sup).padStart(8)}`,
         `  Donchian-20 ${bo} · H ${f(ml.donHigh)} / L ${f(ml.donLow)}`,
       ].join('\n');
     }
+
     // structured payload for remote webhook consumers (same facts, machine-readable)
     const ladderPrice = livePrice || sig.price;
     const ladderWindows: Partial<Record<Timeframe, Candle[]>> = {};
     for (const tf of NHNL_TFS) ladderWindows[tf] = candleService.peek(MARKET, SYMBOL, tf);
     const nhnlRows = computeNhnlSnapshot(ladderWindows, ladderPrice, DEFAULT_DON_N);
     const nhnl = nhnlRows.length ? { price: ladderPrice, donN: DEFAULT_DON_N, rows: nhnlRows } : null;
-    // human-readable ladder for the channel/in-app board: only the timeframes
-    // with an active break — the full 16-dimension grid lives in the payload
+
+    // ── NHNL ladder: every window's strongest state ──
     const nhnlText = (() => {
       if (!nhnlRows.length) return '';
-      // every timeframe gets its strongest glyph — the full ladder is always
-      // visible in the human-readable push, not just the breaks
       const glyph = (r: NhnlRow): string => {
         if (r.nh && r.nl) return `${r.tf} NH+NL`;
         if (r.nh) return `${r.tf} NH`;
@@ -615,8 +630,24 @@ export class SignalEngine {
         if (r.donDown) return `${r.tf} D${DEFAULT_DON_N}↓`;
         return `${r.tf} ·`;
       };
-      return `\n\nNHNL ladder: ${nhnlRows.map(glyph).join('  ')}`;
+      const cells = nhnlRows.map(glyph);
+      const lines: string[] = [];
+      for (let i = 0; i < cells.length; i += 5) lines.push(cells.slice(i, i + 5).join(' | '));
+      return `\n\nNEW HIGH / LOW LADDER (per window)\n  ${lines.join('\n  ')}`;
     })();
+
+    // ── model call + accountability (investment-note style) ──
+    const acc = getAccuracy(tf);
+    const dirGlyph = REGIME_ICON[sig.regime][0];
+    const contTxt = sig.prob == null ? 'n/a' : `${Math.round(sig.prob * 100)}% (n=${sig.probSamples})`;
+    const selfTxt = acc.n >= 20 ? `${Math.round((acc.wins / acc.n) * 100)}% (n=${acc.n})` : 'warming up';
+    const adxTxt = sig.adx != null ? sig.adx.toFixed(1) : '—';
+    const modelCall = [
+      '',
+      `MODEL CALL  ${dirGlyph} ${REGIME_EN[sig.regime].toUpperCase()} · ${tf}`,
+      `  score ${sig.score >= 0 ? '+' : ''}${sig.score.toFixed(2)} · continuation ${contTxt}`,
+      `  self-accuracy ${selfTxt} · ADX ${adxTxt} · price ${priceStr}`,
+    ].join('\n');
     const webhookData = {
       symbol: SYMBOL,
       marketType: MARKET,
@@ -634,7 +665,7 @@ export class SignalEngine {
       nhnl,
     };
     notify('signal.trend', {
-      detail: `[${SYMBOL}] ${priceStr}\n\n${board}${levels}${patterns}${nhnlText}`,
+      detail: `${priceLine}\n\nTREND BOARD\n${board}${nhnlText}${levels}\n${modelCall}${patterns}`,
     }, { level, channel: 'signal', data: webhookData });
     // structured record of every push (nhnl ladder included) for
     // /api/signals?view=history — capped ring, debounced flush

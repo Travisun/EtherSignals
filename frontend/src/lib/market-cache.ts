@@ -55,25 +55,50 @@ export interface MarketCandle {
 }
 
 /** tf → Bitget v2 mix granularity (whitelist: the chart's selectable set). */
-const GRANULARITY: Record<string, string> = {
-  // Bitget v2 MIX granularity uses the compact style (1m/5m/1H/4H) — the
-  // spot-style "5min" vocabulary gets a 400 from this endpoint
+// Bitget v2 MIX granularity uses the compact style (1m/5m/1H/4H) — the
+// spot-style "5min" vocabulary gets a 400 from this endpoint.
+const NATIVE: Record<string, string> = {
   "1m": "1m",
   "5m": "5m",
   "15m": "15m",
   "30m": "30m",
   "1h": "1H",
   "4h": "4H",
+  "6h": "6H",
+  "12h": "12H",
+  "1d": "1D",
+  "3d": "3D",
+  "1w": "1W",
+  "1M": "1M",
 };
 
-export const CHART_TFS = Object.keys(GRANULARITY);
+// Windows the exchange does not provide natively — aggregated here from
+// their base series (same 16-tier ladder as the trading workbench).
+const SYNTH: Record<string, { base: string; seconds: number }> = {
+  "2m": { base: "1m", seconds: 120 },
+  "2h": { base: "1h", seconds: 7200 },
+  "8h": { base: "1h", seconds: 28800 },
+  "2d": { base: "1d", seconds: 172800 },
+};
 
-export async function fetchCandles(tf: string, limit: number): Promise<MarketCandle[]> {
-  const granularity = GRANULARITY[tf];
+const BASE_SECONDS: Record<string, number> = {
+  "1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400,
+  "6h": 21600, "12h": 43200, "1d": 86400, "3d": 259200, "1w": 604800, "1M": 2592000,
+};
+
+/** The full 16-tier ladder in display order. */
+export const CHART_TFS = [
+  "1m", "2m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "2d", "3d", "1w", "1M",
+];
+
+const UPSTREAM_LIMIT = 1000; // Bitget v2 candles max page size
+
+async function fetchNative(tf: string, limit: number): Promise<MarketCandle[]> {
+  const granularity = NATIVE[tf];
   if (!granularity) throw new Error(`unsupported timeframe: ${tf}`);
   const url =
     `https://api.bitget.com/api/v2/mix/market/candles` +
-    `?symbol=ETHUSDT&productType=USDT-FUTURES&granularity=${granularity}&limit=${Math.min(limit, 500)}`;
+    `?symbol=ETHUSDT&productType=USDT-FUTURES&granularity=${granularity}&limit=${Math.min(limit, UPSTREAM_LIMIT)}`;
   const res = await fetch(url, {
     cache: "no-store",
     signal: AbortSignal.timeout(8_000),
@@ -82,7 +107,7 @@ export async function fetchCandles(tf: string, limit: number): Promise<MarketCan
   if (!res.ok) throw new Error(`upstream ${res.status}`);
   const body = (await res.json()) as { code?: string; data?: string[][] };
   if (body.code !== "00000" || !Array.isArray(body.data)) throw new Error("upstream payload");
-  const rows = body.data
+  return body.data
     .map((r) => ({
       time: Math.floor(Number(r[0]) / 1000),
       open: Number(r[1]),
@@ -93,5 +118,29 @@ export async function fetchCandles(tf: string, limit: number): Promise<MarketCan
     }))
     .filter((c) => [c.time, c.open, c.high, c.low, c.close].every(Number.isFinite))
     .sort((a, b) => a.time - b.time);
-  return rows;
+}
+
+/** Aggregate base candles into fixed UTC-aligned buckets (OHLC + volume). */
+function aggregate(base: MarketCandle[], bucketSeconds: number): MarketCandle[] {
+  const buckets = new Map<number, MarketCandle>();
+  for (const c of base) {
+    const t = Math.floor(c.time / bucketSeconds) * bucketSeconds;
+    const cur = buckets.get(t);
+    if (!cur) {
+      buckets.set(t, { ...c, time: t });
+    } else {
+      cur.high = Math.max(cur.high, c.high);
+      cur.low = Math.min(cur.low, c.low);
+      cur.close = c.close;
+      cur.volume += c.volume;
+    }
+  }
+  return [...buckets.values()].sort((a, b) => a.time - b.time);
+}
+
+export async function fetchCandles(tf: string, limit: number): Promise<MarketCandle[]> {
+  const synth = SYNTH[tf];
+  if (!synth) return fetchNative(tf, limit);
+  const base = await fetchNative(synth.base, Math.min(limit * (synth.seconds / (BASE_SECONDS[synth.base] ?? 1)), UPSTREAM_LIMIT));
+  return aggregate(base, synth.seconds).slice(-limit);
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import type { LevelsDTO, SignalDTO } from "@/lib/signals/dto";
+import type { LevelsDTO, NhnlDTO, SignalDTO } from "@/lib/signals/dto";
 import { NhnlLadder } from "@/components/signals/nhnl-ladder";
 import { patternLabel } from "@/lib/constants";
 import { formatClock, formatDateTime, formatPrice } from "@/lib/utils";
@@ -61,6 +61,37 @@ function LevelLine({
   );
 }
 
+/** Tiny per-window ladder dots (1m→1M): green = breaking high, red = breaking low. */
+function NhnlMiniDots({ nhnl }: { nhnl: NhnlDTO }) {
+  return (
+    <span
+      className="flex items-center gap-0.5"
+      title="New-high/new-low state per window (1m → 1M): green = breaking high, red = breaking low, gray = inside range"
+    >
+      {nhnl.rows.map((r) => {
+        const bull = r.nh || r.brkUp || r.donUp;
+        const bear = r.nl || r.brkDown || r.donDown;
+        return (
+          <span
+            key={r.tf}
+            title={`${r.tf}: ${bull && !bear ? "high-side break" : bear && !bull ? "low-side break" : bull && bear ? "both extremes" : "inside range"}`}
+            className={cn(
+              "h-1.5 w-1.5 rounded-full",
+              bull && !bear
+                ? "bg-success"
+                : bear && !bull
+                  ? "bg-destructive"
+                  : bull && bear
+                    ? "bg-amber-500"
+                    : "bg-muted-foreground/40",
+            )}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
 /** Expanded detail: model breakdown + key levels + the channel message. */
 function SignalDetail({ signal }: { signal: SignalDTO }) {
   return (
@@ -107,6 +138,15 @@ function SignalDetail({ signal }: { signal: SignalDTO }) {
             ))}
           </tbody>
         </table>
+
+        {signal.nhnl ? (
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Windows at highs/lows
+            </span>
+            <NhnlMiniDots nhnl={signal.nhnl} />
+          </div>
+        ) : null}
 
         {signal.board?.some((e) => e.patterns.length > 0) ? (
           <div className="mt-3">
