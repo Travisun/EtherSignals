@@ -78,7 +78,7 @@ export function Sidebar() {
             aria-label="EtherSignals home"
             onClick={() => trackEvent("nav.logo")}
           >
-            <LogoWordmark />
+            <LogoWordmark compact />
           </Link>
         ) : (
           <Link href="/" aria-label="EtherSignals home" onClick={() => trackEvent("nav.logo")}>
@@ -185,7 +185,7 @@ export function Sidebar() {
             expanded ? "justify-between px-3" : "flex-col justify-center gap-2 px-0",
           )}
         >
-          <NotificationButton />
+          <NotificationButton layout={expanded ? "compact" : "tab"} />
           <ThemeToggle />
         </div>
       </div>

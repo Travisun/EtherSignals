@@ -118,6 +118,20 @@ body {
 }
 
 /* Page container — wider than the reference docs site: this is a data terminal */
+/* Console sidebar width — the rail publishes 14rem here when expanded;
+   the fallback keeps the collapsed icon-rail width. */
+:root {
+  --sidebar-w: 3.75rem;
+}
+
+@media (min-width: 1024px) {
+  /* deterministic left padding for the content shell (belt-and-braces with
+     the Tailwind class on <main>) */
+  #main {
+    padding-left: var(--sidebar-w);
+  }
+}
+
 .container-page {
   max-width: 1120px;
   margin-inline: auto;
