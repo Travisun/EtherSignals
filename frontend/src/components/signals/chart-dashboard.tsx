@@ -130,6 +130,9 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
   const [overlays, setOverlays] = useState({ ema: true, boll: false, vwap: true, levels: true });
   const [follow, setFollow] = useState(true);
   const [cursorIdx, setCursorIdx] = useState<number | null>(null);
+  const [overlayItems, setOverlayItems] = useState<
+    { x: number; y: number; dir: 1 | -1; prob: number | null; price: number; outcome: string }[]
+  >([]);
 
   const chartDivRef = useRef<HTMLDivElement | null>(null);
   const apiRef = useRef<{
@@ -469,6 +472,53 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
     add(lv.donchianLow ? Number(lv.donchianLow) : undefined, "#64748b", "D20 L", 3);
   }, [latest, overlays.levels]);
 
+  // ── per-push annotation overlay: ⬇️ / probability / ≈price per candle ──
+  // Rendered as a pointer-events-none HTML layer over the chart pane; the
+  // stacks re-anchor on every zoom/pan (visible-range change) so they track
+  // their candle at any zoom level, and only in-view pushes are drawn.
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    const compute = () => {
+      const ts = api.chart.timeScale();
+      const step = TF_SECONDS[tf] ?? 300;
+      const items: { x: number; y: number; dir: 1 | -1; prob: number | null; price: number; outcome: string }[] = [];
+      let lastX = -999;
+      for (const s of signals) {
+        const pushedSec = Math.floor(new Date(s.pushedAt).getTime() / 1000);
+        const t = Math.floor(pushedSec / step) * step;
+        const x = ts.timeToCoordinate(t as UTCTimestamp);
+        if (x == null) continue; // outside the visible range
+        if (Math.abs(x - lastX) < 34) continue; // avoid pile-ups on dense pushes
+        lastX = x;
+        const close = closeAtOrBefore(pushedSec);
+        const y = close != null ? api.series.priceToCoordinate(close) : null;
+        if (y == null) continue;
+        const dir: 1 | -1 = s.score >= 0 ? 1 : -1;
+        const prob = s.board?.find((b) => b.tf === s.timeframe)?.prob ?? null;
+        const exit = closeAtOrBefore(pushedSec + 3 * (TF_SECONDS[s.timeframe] ?? 900));
+        let outcome = "⏳";
+        if (close != null && exit != null) {
+          const movePct = ((exit - close) / close) * 100;
+          if (Math.abs(movePct) < 0.1) outcome = "≈";
+          else if ((movePct > 0 && dir > 0) || (movePct < 0 && dir < 0)) outcome = "✓";
+          else outcome = "✗";
+        }
+        items.push({ x, y, dir, prob, price: close ?? 0, outcome });
+      }
+      setOverlayItems(items);
+    };
+    compute();
+    const handler = () => requestAnimationFrame(compute);
+    const ts = api.chart.timeScale();
+    ts.subscribeVisibleLogicalRangeChange(handler);
+    window.addEventListener("resize", handler);
+    return () => {
+      ts.unsubscribeVisibleLogicalRangeChange(handler);
+      window.removeEventListener("resize", handler);
+    };
+  }, [signals, tf, candles, closeAtOrBefore]);
+
   // forecast accountability + consensus strip
   const stats = useMemo(() => {
     const gradedOnly = boardGrades.filter((g) => g.outcome === "hit" || g.outcome === "miss");
@@ -504,7 +554,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
       const cashLow = distLow != null && price ? (price * distLow) / 100 : null;
       const nearHigh = !r.nh && distHigh != null && distHigh <= 0.3;
       const nearLow = !r.nl && distLow != null && distLow <= 0.3;
-      return { r, high, low, distHigh, distLow, cashHigh, cashLow, nearHigh, nearLow };
+      return { r, high, low, distHigh, distLow, cashHigh, cashLow, nearHigh, nearLow, brokenHigh: r.nh, brokenLow: r.nl };
     });
   }, [latest, price]);
 
@@ -657,6 +707,95 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
             : "loading…"}
       </p>
 
+
+      <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        {/* chart — full width on PC, height scales with the viewport */}
+        <div className="min-w-0">
+          {/* per-candle data bar — follows the crosshair, defaults to the live candle */}
+          {(() => {
+            const idx = cursorIdx ?? candles.length - 1;
+            const fc = candles[idx];
+            if (!fc) return null;
+            const prevClose = idx > 0 ? candles[idx - 1].close : null;
+            const chg = prevClose ? ((fc.close - prevClose) / prevClose) * 100 : null;
+            const sig = signalMap.get(fc.time);
+            const sigDir = sig ? (sig.score >= 0 ? 1 : -1) : 0;
+            const sigProb = sig?.board?.find((b) => b.tf === sig.timeframe)?.prob ?? null;
+            const i20 = indicators.ema20[idx];
+            const i50 = indicators.ema50[idx];
+            const iv = indicators.vwap[idx];
+            const volTxt =
+              fc.volume >= 1e6 ? (fc.volume / 1e6).toFixed(2) + "M" : fc.volume >= 1e3 ? (fc.volume / 1e3).toFixed(1) + "K" : fc.volume.toFixed(0);
+            const barTime = new Date(fc.time * 1000).toLocaleString([], {
+              month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
+            });
+            return (
+              <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-md bg-muted/40 px-2 py-1 font-mono text-[11px]">
+                <span className="font-sans font-bold text-foreground">{tf.toUpperCase()}</span>
+                <span className="text-muted-foreground">{barTime}</span>
+                <span className="text-muted-foreground">O <span className="font-semibold text-foreground">{formatPrice(fc.open)}</span></span>
+                <span className="text-muted-foreground">H <span className="font-semibold text-success">{formatPrice(fc.high)}</span></span>
+                <span className="text-muted-foreground">L <span className="font-semibold text-destructive">{formatPrice(fc.low)}</span></span>
+                <span className="text-muted-foreground">C <span className={cn("font-bold", fc.close >= fc.open ? "text-success" : "text-destructive")}>{formatPrice(fc.close)}</span></span>
+                {chg != null ? (
+                  <span className={cn("font-bold", chg >= 0 ? "text-success" : "text-destructive")}>
+                    {chg >= 0 ? "+" : ""}{chg.toFixed(2)}%
+                  </span>
+                ) : null}
+                <span className="text-muted-foreground">Vol <span className="text-foreground">{volTxt}</span></span>
+                {i20 != null ? <span className="text-amber-500">EMA20 {formatPrice(i20)}</span> : null}
+                {i50 != null ? <span className="text-sky-500">EMA50 {formatPrice(i50)}</span> : null}
+                {iv != null ? <span className="text-fuchsia-500">VWAP {formatPrice(iv)}</span> : null}
+                {sig ? (
+                  <span
+                    className={cn(
+                      "rounded px-1.5 py-0.5 text-[10px] font-bold",
+                      sig.score >= 0 ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive",
+                    )}
+                    title={`signal push ${sig.timeframe} · ${new Date(sig.pushedAt).toLocaleTimeString()}`}
+                  >
+                    {sigDir > 0 ? "↑" : "↓"} {sig.timeframe}
+                    {sigProb != null ? ` ${Math.round(sigProb * 100)}%` : ""}
+                  </span>
+                ) : null}
+                {cursorIdx == null ? (
+                  <span className="ml-auto text-[10px] text-muted-foreground">hover the chart to inspect any candle</span>
+                ) : null}
+              </div>
+            );
+          })()}
+          <div className="relative">
+            <div ref={chartDivRef} className="h-[clamp(360px,62vh,780px)] w-full" />
+            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+              {overlayItems.map((o, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "absolute flex -translate-x-1/2 flex-col items-center rounded bg-background/55 px-1 py-0.5 text-[9px] font-bold leading-tight backdrop-blur-[1px]",
+                    o.dir > 0 ? "text-success" : "text-destructive",
+                  )}
+                  style={{ left: o.x, top: o.dir > 0 ? o.y + 8 : o.y - 52 }}
+                >
+                  <span className="text-[11px]">{o.dir > 0 ? "⬆️" : "⬇️"}</span>
+                  <span className="tnum">
+                    {o.prob != null ? `${Math.round(o.prob * 100)}%` : "—"}
+                    <span className="ml-0.5 text-muted-foreground">{o.outcome}</span>
+                  </span>
+                  <span className="tnum font-semibold text-foreground">≈{formatPrice(o.price)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {latest ? (
+            <div className="mt-2 rounded-lg bg-muted/40 p-2.5">
+              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                Trend board · five timeframes
+              </p>
+              <div className="mt-1.5">
+                <TrendBoard board={latest.board} highlightTf={latest.timeframe} />
+              </div>
+            </div>
+          ) : null}
       {/* forecast strip: one column per timeframe — prediction vs actual */}
       {latest && boardGrades.length ? (
         <div className="mt-3 overflow-x-auto pb-1">
@@ -719,74 +858,6 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
           </div>
         </div>
       ) : null}
-
-      <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        {/* chart — full width on PC, height scales with the viewport */}
-        <div className="min-w-0">
-          {/* per-candle data bar — follows the crosshair, defaults to the live candle */}
-          {(() => {
-            const idx = cursorIdx ?? candles.length - 1;
-            const fc = candles[idx];
-            if (!fc) return null;
-            const prevClose = idx > 0 ? candles[idx - 1].close : null;
-            const chg = prevClose ? ((fc.close - prevClose) / prevClose) * 100 : null;
-            const sig = signalMap.get(fc.time);
-            const sigDir = sig ? (sig.score >= 0 ? 1 : -1) : 0;
-            const sigProb = sig?.board?.find((b) => b.tf === sig.timeframe)?.prob ?? null;
-            const i20 = indicators.ema20[idx];
-            const i50 = indicators.ema50[idx];
-            const iv = indicators.vwap[idx];
-            const volTxt =
-              fc.volume >= 1e6 ? (fc.volume / 1e6).toFixed(2) + "M" : fc.volume >= 1e3 ? (fc.volume / 1e3).toFixed(1) + "K" : fc.volume.toFixed(0);
-            const barTime = new Date(fc.time * 1000).toLocaleString([], {
-              month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
-            });
-            return (
-              <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-md bg-muted/40 px-2 py-1 font-mono text-[11px]">
-                <span className="font-sans font-bold text-foreground">{tf.toUpperCase()}</span>
-                <span className="text-muted-foreground">{barTime}</span>
-                <span className="text-muted-foreground">O <span className="font-semibold text-foreground">{formatPrice(fc.open)}</span></span>
-                <span className="text-muted-foreground">H <span className="font-semibold text-success">{formatPrice(fc.high)}</span></span>
-                <span className="text-muted-foreground">L <span className="font-semibold text-destructive">{formatPrice(fc.low)}</span></span>
-                <span className="text-muted-foreground">C <span className={cn("font-bold", fc.close >= fc.open ? "text-success" : "text-destructive")}>{formatPrice(fc.close)}</span></span>
-                {chg != null ? (
-                  <span className={cn("font-bold", chg >= 0 ? "text-success" : "text-destructive")}>
-                    {chg >= 0 ? "+" : ""}{chg.toFixed(2)}%
-                  </span>
-                ) : null}
-                <span className="text-muted-foreground">Vol <span className="text-foreground">{volTxt}</span></span>
-                {i20 != null ? <span className="text-amber-500">EMA20 {formatPrice(i20)}</span> : null}
-                {i50 != null ? <span className="text-sky-500">EMA50 {formatPrice(i50)}</span> : null}
-                {iv != null ? <span className="text-fuchsia-500">VWAP {formatPrice(iv)}</span> : null}
-                {sig ? (
-                  <span
-                    className={cn(
-                      "rounded px-1.5 py-0.5 text-[10px] font-bold",
-                      sig.score >= 0 ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive",
-                    )}
-                    title={`signal push ${sig.timeframe} · ${new Date(sig.pushedAt).toLocaleTimeString()}`}
-                  >
-                    {sigDir > 0 ? "↑" : "↓"} {sig.timeframe}
-                    {sigProb != null ? ` ${Math.round(sigProb * 100)}%` : ""}
-                  </span>
-                ) : null}
-                {cursorIdx == null ? (
-                  <span className="ml-auto text-[10px] text-muted-foreground">hover the chart to inspect any candle</span>
-                ) : null}
-              </div>
-            );
-          })()}
-          <div ref={chartDivRef} className="h-[clamp(360px,62vh,780px)] w-full" />
-          {latest ? (
-            <div className="mt-2 rounded-lg bg-muted/40 p-2.5">
-              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                Trend board · five timeframes
-              </p>
-              <div className="mt-1.5">
-                <TrendBoard board={latest.board} highlightTf={latest.timeframe} />
-              </div>
-            </div>
-          ) : null}
         </div>
 
         {/* right rail — full channel prices per window */}
@@ -805,93 +876,54 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
                   ) : null}
                 </div>
                 {windowRows.length ? (
-                  <table className="mt-1.5 w-full text-[11px]">
-                    <thead>
-                      <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                        <th className="py-1 text-left font-semibold">Window</th>
-                        <th className="py-1 text-right font-semibold">High / gap</th>
-                        <th className="py-1 text-right font-semibold">Low / gap</th>
-                      </tr>
-                    </thead>
-                    <tbody className="tnum">
-                      {windowRows.map((w) => (
-                        <tr
+                  <div className="mt-1.5 space-y-1">
+                    {windowRows.map((w) => {
+                      const near = w.nearHigh || w.nearLow;
+                      return (
+                        <div
                           key={w.r.tf}
                           className={cn(
-                            "border-t border-border/50",
-                            (w.nearHigh || w.nearLow) && "bg-amber-500/10",
+                            "flex items-center justify-between gap-2 rounded px-1.5 py-1",
+                            near && "bg-amber-500/10",
                           )}
                         >
-                          <td className="py-1.5 text-left">
-                            <span className="font-semibold">{w.r.tf}</span>
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <span className="text-[11px] font-bold">{w.r.tf}</span>
                             {w.r.nh ? (
-                              <span className="ml-1 rounded bg-success/15 px-1 py-px text-[9px] font-bold text-success">
-                                at high
-                              </span>
+                              <span className="text-[10px] font-semibold text-success">at high</span>
                             ) : w.r.nl ? (
-                              <span className="ml-1 rounded bg-destructive/15 px-1 py-px text-[9px] font-bold text-destructive">
-                                at low
-                              </span>
-                            ) : w.nearHigh || w.nearLow ? (
-                              <span className="ml-1 rounded bg-amber-500/20 px-1 py-px text-[9px] font-bold text-amber-500">
-                                ≈ break
-                              </span>
-                            ) : null}
-                          </td>
-                          {/* high side: what the price must climb to break (bullish target) */}
-                          <td className="py-1.5 text-right">
-                            {w.r.nh ? (
-                              <span className="font-bold text-success">broken ✓</span>
+                              <span className="text-[10px] font-semibold text-destructive">at low</span>
+                            ) : near ? (
+                              <span className="rounded bg-amber-500/20 px-1 text-[9px] font-bold text-amber-500">≈ break</span>
                             ) : (
-                              <>
-                                <span className={cn("font-semibold", numTone(w.distHigh))}>
-                                  {formatPrice(w.high)}
-                                </span>
-                                <span className={cn("ml-1 text-[10px]", numTone(w.distHigh))}>
-                                  +{w.distHigh?.toFixed(2)}%
-                                </span>
-                                {w.cashHigh != null && w.distHigh != null && w.distHigh <= 1 ? (
-                                  <span className="ml-1 text-[10px] text-muted-foreground">
-                                    (${w.cashHigh.toFixed(w.cashHigh < 10 ? 2 : 0)})
-                                  </span>
-                                ) : null}
-                              </>
+                              <span className="text-[10px] text-muted-foreground">inside</span>
                             )}
-                          </td>
-                          {/* low side: what the price must fall to break (bearish target) */}
-                          <td className="py-1.5 text-right">
-                            {w.r.nl ? (
-                              <span className="font-bold text-destructive">broken ✓</span>
-                            ) : (
-                              <>
-                                <span className={cn("font-semibold", numTone(w.distLow))}>
-                                  {formatPrice(w.low)}
-                                </span>
-                                <span className={cn("ml-1 text-[10px]", numTone(w.distLow))}>
-                                  -{w.distLow?.toFixed(2)}%
-                                </span>
-                                {w.cashLow != null && w.distLow != null && w.distLow <= 1 ? (
-                                  <span className="ml-1 text-[10px] text-muted-foreground">
-                                    (${w.cashLow.toFixed(w.cashLow < 10 ? 2 : 0)})
-                                  </span>
-                                ) : null}
-                              </>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </div>
+                          <div className="tnum flex shrink-0 items-center gap-2 text-[10px]">
+                            <span className="text-success">
+                              {w.brokenHigh ? "✓" : `H ${formatPrice(w.high)}`}
+                              {!w.brokenHigh && w.distHigh != null ? ` +${w.distHigh.toFixed(2)}%` : ""}
+                            </span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="text-destructive">
+                              {w.brokenLow ? "✓" : `L ${formatPrice(w.low)}`}
+                              {!w.brokenLow && w.distLow != null ? ` -${w.distLow.toFixed(2)}%` : ""}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : (
                   <p className="mt-1.5 text-xs text-muted-foreground">
                     ladder warming up — windows not ready on the producer yet
                   </p>
                 )}
                 <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
-                  High / Low = the running extreme of each forming window. Gap = % and cash the
-                  price still needs to break it.{" "}
-                  <span className="font-semibold text-amber-500">amber rows</span> are within 0.30%
-                  of a break. “at high / at low” = the price IS that extreme right now.
+                  H / L = the running extreme of each forming window · the % after it = how far the
+                  price still needs to break it ·{" "}
+                  <span className="font-semibold text-amber-500">amber rows</span> are within 0.30% ·
+                  &quot;at high / at low&quot; = the price IS that extreme right now.
                 </p>
               </section>
 
