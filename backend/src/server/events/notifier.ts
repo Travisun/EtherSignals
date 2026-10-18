@@ -109,7 +109,16 @@ export async function testWebhook(url: string, token: string): Promise<void> {
       score: 0,
       signals: [{ tf: '5m', regime: 'neutral', score: 0, prob: null, patterns: [] }],
       levels: null,
-      nhnl: null,
+      nhnl: {
+        price: 0,
+        donN: 20,
+        rows: [{
+          tf: '5m', barTime: 0, barHigh: 0, barLow: 0, nh: true, nl: false,
+          prevHigh: null, prevLow: null, brkUp: false, brkDown: false,
+          donHigh: null, donLow: null, donUp: false, donDown: false,
+          distHighPct: 0, distLowPct: 0,
+        }],
+      },
       message: 'DownTrade webhook test',
     }),
     signal: AbortSignal.timeout(10_000),

@@ -8,3 +8,4 @@ data/
 .env.local
 tsconfig.tsbuildinfo
 next-env.d.ts
+.zcode/

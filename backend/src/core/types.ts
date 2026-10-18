@@ -696,6 +696,8 @@ export interface SignalSnapshot {
   at: number;
   /** adaptive-weight optimizer state (walk-forward weight learning) */
   optimizer?: OptimizerSummary;
+  /** multi-TF new-high/new-low ladder — null until the windows are live */
+  nhnl?: { price: number; donN: number; rows: NhnlRow[] } | null;
 }
 
 // ─── Signal optimizer (adaptive weights, persisted) ──────────────────────────

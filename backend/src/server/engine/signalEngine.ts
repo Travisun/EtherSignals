@@ -5,6 +5,9 @@ import { notify } from '@/server/events/notifier';
 import { fmtPrice, tfSeconds } from '@/lib/format';
 import { DEFAULT_DON_N, NHNL_TFS, computeNhnlSnapshot } from '@/core/nhnl';
 import {
+  settingsRepo, signalPushRepo,
+} from '@/server/store/repos';
+import {
   SIGNAL_TFS, ACQUIRE_LIMIT, CONFIRM_BARS, SYMBOL, MARKET, ENABLED,
   HIT_ATR, HORIZON_BARS, TG_MIN_INTERVAL_MS, computeSuite, scoreAt, regimeWithHysteresis, regimeDir,
   patternsAt, replayStats, laplace, EMPTY_STAT,
@@ -177,6 +180,10 @@ export class SignalEngine {
       .map((tf) => this.states.get(tf)?.signal)
       .filter((s): s is TFSignal => Boolean(s));
     const missing = SIGNAL_TFS.filter((tf) => !this.states.has(tf));
+    const ladderPrice = candleService.lastPrice(MARKET, SYMBOL);
+    const ladderWindows: Partial<Record<Timeframe, Candle[]>> = {};
+    for (const tf of NHNL_TFS) ladderWindows[tf] = candleService.peek(MARKET, SYMBOL, tf);
+    const nhnlRows = computeNhnlSnapshot(ladderWindows, ladderPrice, DEFAULT_DON_N);
     return {
       symbol: SYMBOL,
       marketType: MARKET,
@@ -186,6 +193,7 @@ export class SignalEngine {
       signals,
       at: Date.now(),
       optimizer: optimizerSummary(),
+      nhnl: nhnlRows.length ? { price: ladderPrice, donN: DEFAULT_DON_N, rows: nhnlRows } : null,
     };
   }
 
@@ -595,19 +603,19 @@ export class SignalEngine {
     // with an active break — the full 16-dimension grid lives in the payload
     const nhnlText = (() => {
       if (!nhnlRows.length) return '';
-      const fmt = (r: NhnlRow): string | null => {
-        const parts: string[] = [];
-        if (r.nh) parts.push('NH');
-        else if (r.nl) parts.push('NL');
-        if (r.brkUp) parts.push('prev↑');
-        else if (r.brkDown) parts.push('prev↓');
-        if (r.donUp) parts.push(`D${DEFAULT_DON_N}↑`);
-        else if (r.donDown) parts.push(`D${DEFAULT_DON_N}↓`);
-        return parts.length ? `${r.tf} ${parts.join('·')}` : null;
+      // every timeframe gets its strongest glyph — the full ladder is always
+      // visible in the human-readable push, not just the breaks
+      const glyph = (r: NhnlRow): string => {
+        if (r.nh && r.nl) return `${r.tf} NH+NL`;
+        if (r.nh) return `${r.tf} NH`;
+        if (r.nl) return `${r.tf} NL`;
+        if (r.brkUp) return `${r.tf} prev↑`;
+        if (r.brkDown) return `${r.tf} prev↓`;
+        if (r.donUp) return `${r.tf} D${DEFAULT_DON_N}↑`;
+        if (r.donDown) return `${r.tf} D${DEFAULT_DON_N}↓`;
+        return `${r.tf} ·`;
       };
-      const breaks = nhnlRows.map(fmt).filter((x): x is string => x != null);
-      if (!breaks.length) return `\n\nNHNL ladder: all ${nhnlRows.length} TFs inside range`;
-      return `\n\nNHNL ladder: ${breaks.join(' | ')} · ${nhnlRows.length - breaks.length} inside`;
+      return `\n\nNHNL ladder: ${nhnlRows.map(glyph).join('  ')}`;
     })();
     const webhookData = {
       symbol: SYMBOL,
@@ -628,6 +636,20 @@ export class SignalEngine {
     notify('signal.trend', {
       detail: `[${SYMBOL}] ${priceStr}\n\n${board}${levels}${patterns}${nhnlText}`,
     }, { level, channel: 'signal', data: webhookData });
+    // structured record of every push (nhnl ladder included) for
+    // /api/signals?view=history — capped ring, debounced flush
+    signalPushRepo.append({
+      ts: Date.now(),
+      tf,
+      regime: sig.regime,
+      score: sig.score,
+      price: webhookData.price,
+      symbol: SYMBOL,
+      marketType: MARKET,
+      board: webhookData.signals,
+      levels: webhookData.levels,
+      nhnl: webhookData.nhnl,
+    });
     console.log(`[signals] ${SYMBOL} ${tf} -> ${sig.regime} (prob=${sig.prob ?? 'n/a'}) score=${sig.score}`);
   }
 }

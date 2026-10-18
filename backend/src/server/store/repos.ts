@@ -4,6 +4,46 @@ import {
   type BacktestRun, type PaperState, type EquitySnapshot,
 } from '@/core/types';
 
+// ─── Signal push history (structured signal.trend records) ───────────────────
+
+export interface SignalPushRecord {
+  ts: number;
+  /** timeframe that triggered the push */
+  tf: string;
+  regime: string;
+  score: number;
+  price: number;
+  symbol: string;
+  marketType: string;
+  /** five-timeframe board snapshot */
+  board: unknown[];
+  /** daily key levels block (may be null during warmup) */
+  levels: unknown;
+  /** multi-TF NHNL ladder block (may be null during warmup) */
+  nhnl: unknown;
+}
+
+const PUSH_HISTORY_LIMIT = 300;
+
+class SignalPushRepo {
+  private cache: SignalPushRecord[] | null = null;
+
+  list(): SignalPushRecord[] {
+    if (!this.cache) this.cache = getStore().read<SignalPushRecord[]>('signal-pushes', []);
+    return this.cache;
+  }
+
+  append(rec: SignalPushRecord) {
+    const all = this.list();
+    all.unshift(rec);
+    if (all.length > PUSH_HISTORY_LIMIT) all.length = PUSH_HISTORY_LIMIT;
+    getStore().writeDebounced('signal-pushes', all, 1_000);
+  }
+}
+
+export const signalPushRepo = new SignalPushRepo();
+
+
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export const DEFAULT_SETTINGS: AppSettings = {

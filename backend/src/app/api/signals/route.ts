@@ -25,6 +25,11 @@ export async function GET(req: NextRequest) {
       if (sp.get('view') === 'config') {
         return ok({ config: signalEngine.config });
       }
+      if (sp.get('view') === 'history') {
+        const limit = Math.min(Math.max(Number(sp.get('limit') ?? 120) || 120, 1), 300);
+        const { signalPushRepo } = await import('@/server/store/repos');
+        return ok({ pushes: signalPushRepo.list().slice(0, limit) });
+      }
       return ok({ signals: signalEngine.snapshot() });
     } catch (e) {
       return errorResponse(e);

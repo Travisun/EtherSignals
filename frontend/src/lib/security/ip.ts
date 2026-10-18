@@ -37,6 +37,8 @@ export function normalizeIp(ip: string): string {
 export const IP_POLICIES = {
   /** Public feed API: the page polls every 20s (3/min); 4/min leaves headroom for one manual refresh. */
   signalsApi: { limit: 4, windowMs: 60_000 },
+  /** Chart candles: the client refreshes once per 10s; exactly 1/10s per IP. */
+  marketCandles: { limit: 1, windowMs: 10_000 },
   /** Signed strategy pushes. Generous, but bounded. */
   webhookIngest: { limit: 120, windowMs: 60_000 },
   /** Push subscription management. */
