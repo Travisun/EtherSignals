@@ -118,3 +118,26 @@ server {
 安全模型（威胁模型与缓解措施详见 [frontend/docs/SECURITY.md](../frontend/docs/SECURITY.md)）：
 CSP / X-Frame-Options 等安全头已内置于 `next.config.ts`；摄入端点限速 120 次/分/IP、
 请求体上限 64 KB、token 常量时间比较。
+
+---
+
+## 4. 已有部署的升级（oracle-a1）
+
+前端部署在 `oracle-a1:/opt/ethersignals`（文件复制部署，非 git；容器 `ethersignals-app-1`，
+`127.0.0.1:3021`，反代 + TLS 在前；`.env` 提供 DATABASE_URL（外部 PostgreSQL）/ WEBHOOK_SECRETS /
+VAPID）。一条命令完成**代码更新 + 数据库迁移 + 镜像重建 + 容器替换 + 健康验证**：
+
+```bash
+# 在 monorepo 根目录执行（先演练看差异清单，去掉 --dry-run 实际执行）
+scripts/upgrade-remote.sh frontend --dry-run
+scripts/upgrade-remote.sh frontend
+```
+
+脚本行为：rsync 源码（**永不触碰** `.env`、node_modules、.next、`.git`）→ 旧镜像打
+`rollback-<时间戳>` 备份 tag → `docker compose -f docker-compose.prod.yml build`——
+**Prisma 迁移在镜像构建期执行**（Dockerfile 内 `prisma migrate deploy`，幂等；构建失败即中止，
+运行中的旧容器不受影响）→ `up -d` → 轮询 `http://127.0.0.1:3021/api/health` 到 200；
+失败时打印回滚命令。
+
+注意：**后端先于前端升级是安全的**（webhook 新增字段对旧前端透明——zod 剥离未知键）；
+前端先行同样安全（`nhnl` 可选）。升级前端即完成数据库迁移，无需单独的迁移步骤。

@@ -22,12 +22,28 @@
    - frontend：`npx tsc --noEmit` + `npx vitest run`；改了 Prisma schema 先 `npx prisma migrate dev`（本地）/`migrate deploy`（部署机）
 3. 提交信息风格：`<area>: <摘要>`（area ∈ backend / frontend / docs / repo），正文写清楚“为什么”。
 
-## 部署（本机）
+## 部署
+
+### 生产服务器（文件复制部署，非 git）
+
+| 服务 | 主机（ssh 别名） | 远端目录 | 容器 / 端口 | 数据库 |
+|---|---|---|---|---|
+| backend | `opptrix-mail` | `/opt/ethersignals` | `ethersignals`，`127.0.0.1:3100→3000`，SSH 隧道访问 | 无（审计降级为 JSON，设计内） |
+| frontend | `oracle-a1` | `/opt/ethersignals` | `ethersignals-app-1`，`127.0.0.1:3021`，反代+TLS | 外部 PostgreSQL（`.env` 的 DATABASE_URL） |
+
+- **升级一律用脚本**（monorepo 根目录）：`scripts/upgrade-remote.sh <backend|frontend> [--dry-run]`。
+  rsync 只同步源码（绝不触碰远端 `data/`、`.env`、node_modules、.next）→ 旧镜像打 rollback 备份 tag →
+  compose build + up -d → 健康验证；失败打印回滚命令。细节见 `docs/DEPLOY-BACKEND.md` §6 与 `docs/DEPLOY-FRONTEND.md` §4。
+- **数据库迁移**只发生在前端：构建期内 `prisma migrate deploy`（幂等，迁移文件已提交），构建失败自动中止、旧容器不受影响。后端无迁移步骤。
+- 升级顺序两端皆安全（webhook 新字段向后兼容）；生产 webhook 链路：opptrix-mail → `https://ethersignals.com/api/webhooks/signals`（oracle-a1）。
+- 本机开发实例：backend `127.0.0.1:3010`、frontend `127.0.0.1:3021`（启动命令见下）。
+
+### 本机运行实例
 
 - backend（`backend/` 目录）：`rm -rf .next && npm run build` → `NODE_ENV=production PORT=3010 HOST=127.0.0.1 node server.mjs`
 - frontend（`frontend/` 目录）：`npx prisma migrate deploy && npm run build` → `NODE_ENV=production PORT=3021 HOSTNAME=127.0.0.1 npm run start`
 - 生产构建绝不与 dev 共用 `.next`；升级一律干净重建。
-- 完整拓扑（端口/数据库/webhook 接线/局域网部署机）：见后端运行数据目录里的《本地部署记录》（gitignored，仅限本机，**永不提交**）。
+- 完整拓扑（含局域网备用机）：见后端运行数据目录里的《本地部署记录》（gitignored，仅限本机，**永不提交**）。
 
 ## 密钥与敏感信息
 

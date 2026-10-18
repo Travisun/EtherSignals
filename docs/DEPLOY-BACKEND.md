@@ -136,3 +136,22 @@ HTTPS_PROXY=http://127.0.0.1:7897 npm run dev
 - `data/` 含全部密钥，请勿提交或分享；服务器按「单用户自用」设计，勿暴露给不受信网络。
 - API 密钥遵循最小权限：只开交易，不开提现；定期在交易所侧轮换。
 - 加密货币交易风险极高，本项目不构成投资建议。
+
+---
+
+## 6. 已有部署的升级（opptrix-mail）
+
+后端部署在 `opptrix-mail:/opt/ethersignals`（文件复制部署，非 git；容器 `ethersignals`，
+`127.0.0.1:3100→3000`，仅 SSH 隧道访问；`./data` 为运行时数据卷；无 DATABASE_URL/REDIS_URL——
+按设计降级为 JSON 审计日志 + 单实例）。一条命令完成**代码更新 + 镜像重建 + 容器替换 + 健康验证**：
+
+```bash
+# 在 monorepo 根目录执行（先演练看差异清单，去掉 --dry-run 实际执行）
+scripts/upgrade-remote.sh backend --dry-run
+scripts/upgrade-remote.sh backend
+```
+
+脚本行为：rsync 源码（**永不触碰** `data/`、`.env`、node_modules、.next）→ 旧镜像打
+`rollback-<时间戳>` 备份 tag → `docker compose build && up -d` → 等待容器 healthcheck
+（内部 `/api/engine`）转 healthy；失败时打印回滚命令（用备份 tag 回退镜像并重启）。
+后端无数据库迁移步骤——审计库不配置即写 JSON，属设计内降级。
