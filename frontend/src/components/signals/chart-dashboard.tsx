@@ -131,7 +131,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
   const [follow, setFollow] = useState(true);
   const [cursorIdx, setCursorIdx] = useState<number | null>(null);
   const [overlayItems, setOverlayItems] = useState<
-    { x: number; y: number; dir: 1 | -1; prob: number | null; price: number; outcome: string }[]
+    { x: number; dir: 1 | -1; prob: number | null; outcome: string }[]
   >([]);
 
   const chartDivRef = useRef<HTMLDivElement | null>(null);
@@ -482,20 +482,18 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
     const compute = () => {
       const ts = api.chart.timeScale();
       const step = TF_SECONDS[tf] ?? 300;
-      const items: { x: number; y: number; dir: 1 | -1; prob: number | null; price: number; outcome: string }[] = [];
+      const items: { x: number; dir: 1 | -1; prob: number | null; outcome: string }[] = [];
       let lastX = -999;
       for (const s of signals) {
         const pushedSec = Math.floor(new Date(s.pushedAt).getTime() / 1000);
         const t = Math.floor(pushedSec / step) * step;
         const x = ts.timeToCoordinate(t as UTCTimestamp);
         if (x == null) continue; // outside the visible range
-        if (Math.abs(x - lastX) < 34) continue; // avoid pile-ups on dense pushes
+        if (Math.abs(x - lastX) < 40) continue; // avoid pile-ups on dense pushes
         lastX = x;
-        const close = closeAtOrBefore(pushedSec);
-        const y = close != null ? api.series.priceToCoordinate(close) : null;
-        if (y == null) continue;
         const dir: 1 | -1 = s.score >= 0 ? 1 : -1;
         const prob = s.board?.find((b) => b.tf === s.timeframe)?.prob ?? null;
+        const close = closeAtOrBefore(pushedSec);
         const exit = closeAtOrBefore(pushedSec + 3 * (TF_SECONDS[s.timeframe] ?? 900));
         let outcome = "⏳";
         if (close != null && exit != null) {
@@ -504,7 +502,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
           else if ((movePct > 0 && dir > 0) || (movePct < 0 && dir < 0)) outcome = "✓";
           else outcome = "✗";
         }
-        items.push({ x, y, dir, prob, price: close ?? 0, outcome });
+        items.push({ x, dir, prob, outcome });
       }
       setOverlayItems(items);
     };
@@ -766,22 +764,21 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
           })()}
           <div className="relative">
             <div ref={chartDivRef} className="h-[clamp(360px,62vh,780px)] w-full" />
-            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+            <div className="pointer-events-none absolute inset-x-0 top-1 h-14 overflow-hidden">
               {overlayItems.map((o, i) => (
                 <div
                   key={i}
                   className={cn(
-                    "absolute flex -translate-x-1/2 flex-col items-center rounded bg-background/55 px-1 py-0.5 text-[9px] font-bold leading-tight backdrop-blur-[1px]",
+                    "absolute flex -translate-x-1/2 flex-col items-center rounded bg-background/70 px-1.5 py-0.5 text-[10px] font-bold leading-tight backdrop-blur-[1px]",
                     o.dir > 0 ? "text-success" : "text-destructive",
                   )}
-                  style={{ left: o.x, top: o.dir > 0 ? o.y + 8 : o.y - 52 }}
+                  style={{ left: o.x }}
                 >
-                  <span className="text-[11px]">{o.dir > 0 ? "⬆️" : "⬇️"}</span>
+                  <span className="text-[12px]">{o.dir > 0 ? "▲" : "▼"}</span>
                   <span className="tnum">
                     {o.prob != null ? `${Math.round(o.prob * 100)}%` : "—"}
                     <span className="ml-0.5 text-muted-foreground">{o.outcome}</span>
                   </span>
-                  <span className="tnum font-semibold text-foreground">≈{formatPrice(o.price)}</span>
                 </div>
               ))}
             </div>
@@ -807,33 +804,33 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
                 <div
                   key={g.tf}
                   className={cn(
-                    "min-w-[104px] rounded-lg border p-2 text-center",
+                    "min-w-[150px] rounded-lg border p-1.5",
                     trigger ? "border-primary/50 bg-primary/5" : "border-border bg-card",
                   )}
                 >
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                    {g.tf}
-                    {trigger ? " · trigger" : ""}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "text-2xl font-bold leading-none",
+                        g.dir > 0 ? "text-success" : "text-destructive",
+                      )}
+                    >
+                      {g.dir > 0 ? "↑" : "↓"}
+                    </span>
+                    <span className="flex min-w-0 flex-col leading-tight">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        {g.tf}
+                        {trigger ? " · trigger" : ""}
+                      </span>
+                      <span className={cn("text-[10px] font-semibold", meta.text)}>{meta.label}</span>
+                      <span className="tnum text-[10px] text-muted-foreground">
+                        {g.prob == null ? "n/a" : `${Math.round(g.prob * 100)}%`} · {formatScore(g.score)}
+                      </span>
+                    </span>
+                  </div>
                   <p
                     className={cn(
-                      "mt-1 text-2xl font-bold leading-none",
-                      g.dir > 0 ? "text-success" : "text-destructive",
-                    )}
-                  >
-                    {g.dir > 0 ? "↑" : "↓"}
-                  </p>
-                  <p className={cn("mt-1 text-[10px] font-semibold uppercase tracking-wider", meta.text)}>
-                    {meta.label}
-                  </p>
-                  <p className="tnum mt-1 text-xs font-bold">
-                    {g.prob == null ? "n/a" : `${Math.round(g.prob * 100)}%`}
-                  </p>
-                  <p className="text-[9px] text-muted-foreground">continuation</p>
-                  <p className="tnum text-[10px] text-muted-foreground">score {formatScore(g.score)}</p>
-                  <p
-                    className={cn(
-                      "tnum mt-1 rounded px-1 py-0.5 text-[10px] font-bold",
+                      "tnum mt-1 rounded px-1 py-0.5 text-center text-[10px] font-bold",
                       g.outcome === "hit"
                         ? "bg-success/15 text-success"
                         : g.outcome === "miss"
@@ -845,9 +842,9 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
                     title="graded against the realized move over the next 3 candles of this timeframe"
                   >
                     {g.outcome === "hit"
-                      ? `✓ hit +${(g.realizedPct ?? 0).toFixed(2)}%`
+                      ? `✓ +${(g.realizedPct ?? 0).toFixed(2)}%`
                       : g.outcome === "miss"
-                        ? `✗ miss ${(g.realizedPct ?? 0).toFixed(2)}%`
+                        ? `✗ ${(g.realizedPct ?? 0).toFixed(2)}%`
                         : g.outcome === "flat"
                           ? "≈ flat"
                           : "⏳ pending"}
