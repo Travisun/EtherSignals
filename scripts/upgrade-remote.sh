@@ -46,7 +46,14 @@ esac
 
 RSYNC_FLAGS=(-az --delete \
   --exclude '.git/' --exclude 'node_modules/' --exclude '.next/' \
-  --exclude '.env' --exclude 'data/' --exclude '*.log')
+  --exclude '.env' --exclude 'data/' --exclude '*.log' \
+  --exclude 'docker-compose.yml' --exclude 'docker-compose.prod.yml' \
+  --exclude 'docker-compose.override.yml')
+# Compose files are HOST-OWNED environment config (ports, services, build args
+# differ per deployment) — they are never overwritten by the repo default.
+# Learned the hard way 2026-10-18: the repo's full-stack compose briefly
+# replaced opptrix-mail's single-service file and its postgres tried to bind a
+# busy host port. Server compose files are restorable from the deploy record.
 
 echo "== $TARGET → $HOST:$REMOTE_DIR ${DRY:0:-0}"
 if [ "$DRY" = "--dry-run" ]; then
