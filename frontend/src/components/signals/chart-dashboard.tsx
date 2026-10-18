@@ -129,6 +129,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [overlays, setOverlays] = useState({ ema: true, boll: false, vwap: true, levels: true });
   const [follow, setFollow] = useState(true);
+  const [cursorIdx, setCursorIdx] = useState<number | null>(null);
 
   const chartDivRef = useRef<HTMLDivElement | null>(null);
   const apiRef = useRef<{
@@ -146,6 +147,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
   const followRef = useRef(true);
   followRef.current = follow;
   const candlesCountRef = useRef(0);
+  const candlesRef = useRef<Candle[]>([]);
 
   const latest = signals[0] ?? null;
 
@@ -190,6 +192,38 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
     const timer = setInterval(load, 4_000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    candlesRef.current = candles;
+  }, [candles]);
+
+  // overlay indicator values per candle (shared by the chart series and the
+  // per-candle data bar above it)
+  const indicators = useMemo(() => {
+    const closes = candles.map((c) => c.close);
+    const times = candles.map((c) => c.time as UTCTimestamp);
+    const mid = sma(closes, 20);
+    const dev = rollingStd(closes, 20);
+    return {
+      times,
+      closes,
+      ema20: ema(closes, 20),
+      ema50: ema(closes, 50),
+      bollU: mid.map((m, i) => (m != null && dev[i] != null ? m + 2 * (dev[i] as number) : null)),
+      bollL: mid.map((m, i) => (m != null && dev[i] != null ? m - 2 * (dev[i] as number) : null)),
+      vwap: rollingVwap(candles),
+    };
+  }, [candles]);
+
+  // push signals bucketed onto chart-candle times
+  const signalMap = useMemo(() => {
+    const step = TF_SECONDS[tf] ?? 300;
+    const m = new Map<number, SignalDTO>();
+    for (const sig of signals) {
+      m.set(Math.floor(new Date(sig.pushedAt).getTime() / 1000 / step) * step, sig);
+    }
+    return m;
+  }, [signals, tf]);
 
   // chart lifecycle (once)
   useEffect(() => {
@@ -253,6 +287,28 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
       if (!range) return;
       setFollow(range.to >= candlesCountRef.current - 2);
     });
+    // per-candle data bar follows the crosshair
+    chart.subscribeCrosshairMove((param) => {
+      const t = param.time as number | undefined;
+      if (t == null) {
+        setCursorIdx(null);
+        return;
+      }
+      const list = candlesRef.current;
+      let lo = 0;
+      let hi = list.length - 1;
+      let idx = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (list[mid].time <= t) {
+          idx = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      setCursorIdx(idx >= 0 && list[idx].time === t ? idx : idx);
+    });
     return () => {
       chart.remove();
       apiRef.current = null;
@@ -268,7 +324,6 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
   useEffect(() => {
     const api = apiRef.current;
     if (!api || candles.length === 0) return;
-    const times = candles.map((c) => c.time as UTCTimestamp);
     api.series.setData(
       candles.map((c) => ({
         time: c.time as UTCTimestamp,
@@ -285,26 +340,18 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
         color: c.close >= c.open ? "rgba(22,163,74,0.35)" : "rgba(220,38,38,0.35)",
       })),
     );
-    const closes = candles.map((c) => c.close);
+    const { times, ema20, ema50, bollU, bollL, vwap } = indicators;
     const putLine = (line: ISeriesApi<"Line">, values: (number | null)[]) =>
       line.setData(
         times
           .map((t, i) => ({ time: t, value: values[i] }))
           .filter((p): p is { time: UTCTimestamp; value: number } => p.value != null),
       );
-    putLine(api.ema20, ema(closes, 20));
-    putLine(api.ema50, ema(closes, 50));
-    const mid = sma(closes, 20);
-    const dev = rollingStd(closes, 20);
-    putLine(
-      api.bollU,
-      mid.map((m, i) => (m != null && dev[i] != null ? m + 2 * (dev[i] as number) : null)),
-    );
-    putLine(
-      api.bollL,
-      mid.map((m, i) => (m != null && dev[i] != null ? m - 2 * (dev[i] as number) : null)),
-    );
-    putLine(api.vwap, rollingVwap(candles));
+    putLine(api.ema20, ema20);
+    putLine(api.ema50, ema50);
+    putLine(api.bollU, bollU);
+    putLine(api.bollL, bollL);
+    putLine(api.vwap, vwap);
     api.ema20.applyOptions({ visible: overlays.ema });
     api.ema50.applyOptions({ visible: overlays.ema });
     api.bollU.applyOptions({ visible: overlays.boll });
@@ -331,7 +378,7 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
       // pinned to the live edge — new bars scroll in from the right
       api.chart.timeScale().scrollToRealTime();
     }
-  }, [candles, tf, overlays]);
+  }, [candles, tf, overlays, indicators]);
 
   // ── forecast board: per-timeframe prediction graded vs realized move ──
   const closeAtOrBefore = useCallback(
@@ -676,6 +723,59 @@ export function ChartDashboard({ initialSignals }: { initialSignals: SignalDTO[]
       <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         {/* chart — full width on PC, height scales with the viewport */}
         <div className="min-w-0">
+          {/* per-candle data bar — follows the crosshair, defaults to the live candle */}
+          {(() => {
+            const idx = cursorIdx ?? candles.length - 1;
+            const fc = candles[idx];
+            if (!fc) return null;
+            const prevClose = idx > 0 ? candles[idx - 1].close : null;
+            const chg = prevClose ? ((fc.close - prevClose) / prevClose) * 100 : null;
+            const sig = signalMap.get(fc.time);
+            const sigDir = sig ? (sig.score >= 0 ? 1 : -1) : 0;
+            const sigProb = sig?.board?.find((b) => b.tf === sig.timeframe)?.prob ?? null;
+            const i20 = indicators.ema20[idx];
+            const i50 = indicators.ema50[idx];
+            const iv = indicators.vwap[idx];
+            const volTxt =
+              fc.volume >= 1e6 ? (fc.volume / 1e6).toFixed(2) + "M" : fc.volume >= 1e3 ? (fc.volume / 1e3).toFixed(1) + "K" : fc.volume.toFixed(0);
+            const barTime = new Date(fc.time * 1000).toLocaleString([], {
+              month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
+            });
+            return (
+              <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-md bg-muted/40 px-2 py-1 font-mono text-[11px]">
+                <span className="font-sans font-bold text-foreground">{tf.toUpperCase()}</span>
+                <span className="text-muted-foreground">{barTime}</span>
+                <span className="text-muted-foreground">O <span className="font-semibold text-foreground">{formatPrice(fc.open)}</span></span>
+                <span className="text-muted-foreground">H <span className="font-semibold text-success">{formatPrice(fc.high)}</span></span>
+                <span className="text-muted-foreground">L <span className="font-semibold text-destructive">{formatPrice(fc.low)}</span></span>
+                <span className="text-muted-foreground">C <span className={cn("font-bold", fc.close >= fc.open ? "text-success" : "text-destructive")}>{formatPrice(fc.close)}</span></span>
+                {chg != null ? (
+                  <span className={cn("font-bold", chg >= 0 ? "text-success" : "text-destructive")}>
+                    {chg >= 0 ? "+" : ""}{chg.toFixed(2)}%
+                  </span>
+                ) : null}
+                <span className="text-muted-foreground">Vol <span className="text-foreground">{volTxt}</span></span>
+                {i20 != null ? <span className="text-amber-500">EMA20 {formatPrice(i20)}</span> : null}
+                {i50 != null ? <span className="text-sky-500">EMA50 {formatPrice(i50)}</span> : null}
+                {iv != null ? <span className="text-fuchsia-500">VWAP {formatPrice(iv)}</span> : null}
+                {sig ? (
+                  <span
+                    className={cn(
+                      "rounded px-1.5 py-0.5 text-[10px] font-bold",
+                      sig.score >= 0 ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive",
+                    )}
+                    title={`signal push ${sig.timeframe} · ${new Date(sig.pushedAt).toLocaleTimeString()}`}
+                  >
+                    {sigDir > 0 ? "↑" : "↓"} {sig.timeframe}
+                    {sigProb != null ? ` ${Math.round(sigProb * 100)}%` : ""}
+                  </span>
+                ) : null}
+                {cursorIdx == null ? (
+                  <span className="ml-auto text-[10px] text-muted-foreground">hover the chart to inspect any candle</span>
+                ) : null}
+              </div>
+            );
+          })()}
           <div ref={chartDivRef} className="h-[clamp(360px,62vh,780px)] w-full" />
           {latest ? (
             <div className="mt-2 rounded-lg bg-muted/40 p-2.5">
