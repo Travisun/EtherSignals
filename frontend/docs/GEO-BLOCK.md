@@ -48,27 +48,33 @@ Design properties:
 
 ## Database provisioning
 
-GeoLite2 is free but license-gated: create a MaxMind account
-(<https://www.maxmind.com/en/geolite2/signup>), then note the **Account ID**
-and a **License Key**. The image ships no database (credentials never enter
-git or the image); the entrypoint downloads into the `geoip` docker volume at
-boot when the file is missing or older than `GEOIP_REFRESH_DAYS` (default 4).
+**Zero-config default:** with no credentials the entrypoint downloads the
+database from free community mirrors on GitHub — no signup needed:
+
+1. `P3TERX/GeoLite.mmdb` → latest `GeoLite2-Country.mmdb` (straight GeoLite2 copy, refreshed twice weekly)
+2. `Loyalsoldier/geoip` → latest `Country.mmdb` (GeoLite2-derived; some orgs get custom codes like `GOOGLE` instead of ISO codes — irrelevant for a CN gate since only `CN` matches the block list)
+
+Mirrors are a convenience: GeoLite2's EULA formally expects downloads via
+your own MaxMind account, so for strict compliance fill in credentials and
+the official API takes precedence automatically:
 
 ```bash
-# .env (frontend)
+# .env (frontend) — optional
 GEOIP_ACCOUNT_ID="123456"
 GEOIP_LICENSE_KEY="xxxxxxxxxxxxxx"
 ```
 
-Alternative sources: `GEOIP_MMDB_URL` (direct raw `.mmdb` URL — wins over the
-API when set) or pre-place the file and point `GEOIP_MMDB_PATH` at it.
-Manual local run: `npm run geoip:download` (behind a proxy add
-`NODE_USE_ENV_PROXY=1`).
+Source priority: `GEOIP_MMDB_URL` (direct raw `.mmdb` URL) → official MaxMind
+API (when both credentials are set) → free mirrors. Or pre-place the file and
+point `GEOIP_MMDB_PATH` at it. Manual local run:
+`npm run geoip:download` (behind a proxy add `NODE_USE_ENV_PROXY=1`).
 
-While the server is running, a swapped-in database is picked up within a
-minute (mtime hot-reload); a database that appears after boot is retried
-every 30 s. To refresh without redeploying: restart the container, or drop a
-fresh `.mmdb` into the volume.
+The image ships no database; the entrypoint downloads into the `geoip`
+docker volume at boot when the file is missing or older than
+`GEOIP_REFRESH_DAYS` (default 4). While the server is running, a swapped-in
+database is picked up within a minute (mtime hot-reload); a database that
+appears after boot is retried every 30 s. To refresh without redeploying:
+restart the container, or drop a fresh `.mmdb` into the volume.
 
 ## Environment variables
 
@@ -76,7 +82,7 @@ fresh `.mmdb` into the volume.
 |---|---|---|
 | `GEOIP_BLOCKED_COUNTRIES` | `CN` | Comma/space-separated ISO codes to block |
 | `GEOIP_BLOCK` | `true` | `false` = serve every region (incident kill switch) |
-| `GEOIP_ACCOUNT_ID` / `GEOIP_LICENSE_KEY` | — | MaxMind credentials for the entrypoint download |
+| `GEOIP_ACCOUNT_ID` / `GEOIP_LICENSE_KEY` | — | Optional MaxMind credentials — official API then beats the free mirrors |
 | `GEOIP_MMDB_URL` | — | Direct `.mmdb` URL, overrides the API |
 | `GEOIP_MMDB_PATH` | `<app>/geoip/GeoLite2-Country.mmdb` | Database path override |
 | `GEOIP_REFRESH_DAYS` | `4` | Entrypoint re-download threshold |

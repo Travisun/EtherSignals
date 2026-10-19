@@ -8,6 +8,10 @@
  *   2. GEOIP_ACCOUNT_ID +
  *      GEOIP_LICENSE_KEY   — official MaxMind download API (GeoLite2 is free,
  *                            sign up: https://www.maxmind.com/en/geolite2/signup)
+ *   3. default             — free community mirrors on GitHub, no signup.
+ *                            Note: GeoLite2's EULA expects downloads via your
+ *                            own MaxMind account; mirrors are a convenience —
+ *                            switch to (2) for strict compliance.
  *
  * Writes <target>.mmdb atomically (temp dir next to the target, then rename).
  * Skips when the existing file is younger than GEOIP_REFRESH_DAYS (default 4)
@@ -31,7 +35,12 @@ const TARGET =
   process.env.GEOIP_MMDB_PATH ||
   path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "geoip", "GeoLite2-Country.mmdb");
 const DOWNLOAD_URL = "https://download.maxmind.com/geoip/databases/GeoLite2-Country/download?suffix=tar.gz";
-/** GeoLite2-Country is ~6 MB compressed; anything smaller is a broken body. */
+/** Free GitHub mirrors of GeoLite2-Country (raw .mmdb), tried in order. */
+const MIRROR_URLS = [
+  "https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-Country.mmdb",
+  "https://github.com/Loyalsoldier/geoip/releases/latest/download/Country.mmdb",
+];
+/** GeoLite2-Country is ~3-6 MB; anything smaller is a broken body. */
 const MIN_MMDB_BYTES = 400_000;
 
 function log(msg) {
@@ -81,6 +90,20 @@ function extractFirstMmdb(tarGz, workDir) {
   return fs.readFileSync(found[0]);
 }
 
+async function downloadOfficial() {
+  const auth = Buffer.from(
+    `${process.env.GEOIP_ACCOUNT_ID}:${process.env.GEOIP_LICENSE_KEY}`,
+  ).toString("base64");
+  log("downloading GeoLite2-Country from download.maxmind.com…");
+  const tarGz = await fetchToBuffer(DOWNLOAD_URL, { Authorization: `Basic ${auth}` });
+  const workDir = fs.mkdtempSync(path.join(path.dirname(TARGET), ".geoip-"));
+  try {
+    return extractFirstMmdb(tarGz, workDir);
+  } finally {
+    fs.rmSync(workDir, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   if (!FORCE && ageDays(TARGET) < REFRESH_DAYS) {
     log(`fresh copy at ${TARGET} (< ${REFRESH_DAYS}d) — skipping`);
@@ -89,26 +112,28 @@ async function main() {
 
   let mmdb;
   if (process.env.GEOIP_MMDB_URL) {
-    log(`downloading raw database from GEOIP_MMDB_URL…`);
+    log("downloading raw database from GEOIP_MMDB_URL…");
     mmdb = await fetchToBuffer(process.env.GEOIP_MMDB_URL);
   } else if (process.env.GEOIP_ACCOUNT_ID && process.env.GEOIP_LICENSE_KEY) {
-    const auth = Buffer.from(
-      `${process.env.GEOIP_ACCOUNT_ID}:${process.env.GEOIP_LICENSE_KEY}`,
-    ).toString("base64");
-    log("downloading GeoLite2-Country from download.maxmind.com…");
-    const tarGz = await fetchToBuffer(DOWNLOAD_URL, { Authorization: `Basic ${auth}` });
-    const workDir = fs.mkdtempSync(path.join(path.dirname(TARGET), ".geoip-"));
-    try {
-      mmdb = extractFirstMmdb(tarGz, workDir);
-    } finally {
-      fs.rmSync(workDir, { recursive: true, force: true });
-    }
+    mmdb = await downloadOfficial();
   } else {
-    fail(
-      "no source configured — set GEOIP_ACCOUNT_ID + GEOIP_LICENSE_KEY " +
-        "(free MaxMind GeoLite2 account) or GEOIP_MMDB_URL",
-      1,
-    );
+    // Zero-config default: community mirrors of GeoLite2 on GitHub (no
+    // signup). Mirrors refresh twice weekly; if both die, configure the
+    // official API (GEOIP_ACCOUNT_ID/GEOIP_LICENSE_KEY) or GEOIP_MMDB_URL.
+    let lastErr;
+    for (const url of MIRROR_URLS) {
+      try {
+        log(`no credentials configured — downloading from free mirror…`);
+        mmdb = await fetchToBuffer(url);
+        break;
+      } catch (err) {
+        lastErr = err;
+        log(`mirror failed (${err?.message ?? err}) — trying next source`);
+      }
+    }
+    if (!mmdb) {
+      fail(`all free mirrors failed: ${lastErr?.message ?? lastErr}`, 2);
+    }
   }
 
   if (!(await looksLikeMmdb(mmdb))) {
