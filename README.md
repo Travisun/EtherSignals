@@ -72,7 +72,7 @@ npm run dev                                   # → http://localhost:3000
 #      URL   = http://127.0.0.1:3001/api/webhooks/signals
 #      Token = dev-webhook-secret-change-me
 #    Enable → click "Test" → {"accepted":1}
-# ⑤ Done: the dashboard shows the snapshot within 20s ✅
+# ⑤ Done: the dashboard shows the snapshot within 4s ✅
 #    (real pushes arrive on the next trend change)
 ```
 
@@ -91,7 +91,7 @@ npm run dev                                   # → http://localhost:3000
 | [`docs/`](docs/) | **Deployment guides** (中文): backend / frontend / webhook integration | — |
 
 Data flow: `backend` detects a trend change → webhook push (Bearer token) with a full snapshot →
-`frontend` verifies & stores it → page refreshes within 20s + Web Push fan-out.
+`frontend` verifies & stores it → page refreshes within 4s + Web Push fan-out.
 
 ## 🛠 Deployment guides
 
