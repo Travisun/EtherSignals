@@ -27,8 +27,23 @@ services:
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
       TRUST_PROXY: "true"
+      # Region blocking (GeoLite2-Country). Defaults block CN (mainland only).
+      # Needs GEOIP_ACCOUNT_ID/GEOIP_LICENSE_KEY (or GEOIP_MMDB_URL) in .env;
+      # without credentials the site serves fail-open with blocking inactive.
+      GEOIP_BLOCK: ${GEOIP_BLOCK:-true}
+      GEOIP_BLOCKED_COUNTRIES: ${GEOIP_BLOCKED_COUNTRIES:-CN}
+      GEOIP_ACCOUNT_ID: ${GEOIP_ACCOUNT_ID:-}
+      GEOIP_LICENSE_KEY: ${GEOIP_LICENSE_KEY:-}
+      GEOIP_MMDB_URL: ${GEOIP_MMDB_URL:-}
+      GEOIP_MMDB_PATH: ${GEOIP_MMDB_PATH:-}
+    volumes:
+      # GeoLite2 database persists across restarts; entrypoint refreshes it.
+      - geoip:/app/geoip
     logging:
       driver: json-file
       options:
         max-size: 10m
         max-file: "5"
+
+volumes:
+  geoip:

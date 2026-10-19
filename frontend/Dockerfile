@@ -49,8 +49,10 @@ COPY --from=build /app/public ./public
 # Prisma engine (standalone tracing fallback) + schema (introspection/debug).
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/prisma ./prisma
+# GeoLite2 updater: the entrypoint keeps /app/geoip fresh (mounted volume).
+COPY scripts/geoip-download.mjs ./scripts/geoip-download.mjs
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh && mkdir -p /app/public && chown -R nodejs:nodejs /app
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh && mkdir -p /app/public /app/geoip && chown -R nodejs:nodejs /app
 USER nodejs
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

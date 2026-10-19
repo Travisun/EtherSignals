@@ -34,3 +34,6 @@ next-env.d.ts
 
 # prisma
 /prisma/migrations/dev.db*
+
+# GeoLite2 database (downloaded at runtime, never committed)
+/geoip

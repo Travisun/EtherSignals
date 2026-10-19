@@ -6,6 +6,8 @@
  * in instrumentation (server boot), never at import time.
  */
 
+import { parseBlockedCountries } from "@/lib/geoip/geo";
+
 function readSecretList(raw: string | undefined): string[] {
   return (raw ?? "")
     .split(",")
@@ -36,6 +38,15 @@ export const env = {
   },
   get isProd(): boolean {
     return process.env.NODE_ENV === "production";
+  },
+  // ── region blocking (GeoLite2) ─────────────────────────────────────────
+  /** Kill switch: GEOIP_BLOCK="false" serves everyone (incident escape hatch). */
+  get geoipEnabled(): boolean {
+    return process.env.GEOIP_BLOCK !== "false";
+  },
+  /** ISO country codes to block; empty/undefined falls back to ["CN"]. */
+  get blockedCountries(): string[] {
+    return parseBlockedCountries(process.env.GEOIP_BLOCKED_COUNTRIES);
   },
 };
 

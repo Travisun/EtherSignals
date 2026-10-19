@@ -30,6 +30,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // The GeoLite2 reader opens the .mmdb with fs at runtime — keep it outside
+  // the bundler so the file path it holds is real on disk.
+  serverExternalPackages: ["@maxmind/geoip2-node"],
   outputFileTracingIncludes: {
     "/**": [
       "./node_modules/.prisma/**/*",

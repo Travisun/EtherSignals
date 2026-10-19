@@ -14,9 +14,11 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "icons": "node scripts/generate-icons.mjs",
+    "geoip:download": "node scripts/geoip-download.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@maxmind/geoip2-node": "^7.1.0",
     "@prisma/client": "^6.19.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
