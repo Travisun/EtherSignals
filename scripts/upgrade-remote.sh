@@ -47,7 +47,7 @@ esac
 RSYNC_FLAGS=(-az --delete \
   --exclude '.git/' --exclude 'node_modules/' --exclude '.next/' \
   --exclude '.env' --exclude 'data/' --exclude '*.log' \
-  --exclude 'geoip/' \
+  --exclude '/geoip/' \
   --exclude 'docker-compose.yml' --exclude 'docker-compose.prod.yml' \
   --exclude 'docker-compose.override.yml')
 # Compose files are HOST-OWNED environment config (ports, services, build args
