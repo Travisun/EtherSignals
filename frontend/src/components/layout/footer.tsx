@@ -85,11 +85,30 @@ export async function Footer() {
       </div>
 
       <div className="border-t border-border">
-        <div className="container-page flex flex-col gap-1 py-4 text-[11px] leading-relaxed text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <p>© {year} EtherSignals · Built for research, run with care.</p>
-          <p className="font-medium text-warning">
-            Not financial advice. Trading involves substantial risk of loss.
-          </p>
+        <div className="container-page flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-1 text-[11px] leading-relaxed text-muted-foreground">
+            <p>© {year} EtherSignals · Built for research, run with care.</p>
+            <p className="font-medium text-warning">
+              Not financial advice. Trading involves substantial risk of loss.
+            </p>
+          </div>
+          <TrackedLink
+            href="https://www.producthunt.com/products/ether-signals?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-ether-signals"
+            target="_blank"
+            rel="noopener noreferrer"
+            event="producthunt.click"
+            data={{ source: "footer_badge" }}
+            className="shrink-0"
+            aria-label="Ether Signals on Product Hunt"
+          >
+            <img
+              src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1286330&theme=dark&t=1792482262855"
+              alt="Ether Signals - AI based real-time crypto trend signals, graded in public | Product Hunt"
+              width={250}
+              height={54}
+              loading="lazy"
+            />
+          </TrackedLink>
         </div>
       </div>
     </footer>
