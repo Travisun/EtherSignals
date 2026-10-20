@@ -18,6 +18,8 @@
   <a href="https://t.me/ethersignals"><img alt="Get free real-time signals on Telegram" src="https://img.shields.io/badge/Subscribe_Free_–_Real_Time_Signals-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" height="56"></a>
   &nbsp;&nbsp;
   <a href="https://ethersignals.com"><img alt="ethersignals.com — dashboards, history and webhook delivery" src="https://img.shields.io/badge/ethersignals.com-Dashboards_%26_History-364A63?style=for-the-badge&logo=googlechrome&logoColor=white" height="56"></a>
+  &nbsp;&nbsp;
+  <a href="https://www.producthunt.com/products/ether-signals?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-ether-signals" target="_blank" rel="noopener noreferrer"><img alt="Ether Signals - AI based real-time crypto trend signals, graded in public | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1286330&amp;theme=dark&amp;t=1792482262855"></a>
 </p>
 
 <p align="center">
